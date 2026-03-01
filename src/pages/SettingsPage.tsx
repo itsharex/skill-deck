@@ -11,6 +11,9 @@ import { listAgents, getLastSelectedAgents, saveLastSelectedAgents } from '@/hoo
 import { useContextStore } from '@/stores/context';
 import { useUpdaterStore } from '@/stores/updater';
 import { AgentSelector } from '@/components/skills/add-skill/AgentSelector';
+import { Progress } from '@/components/ui/progress';
+import { formatRelativeTime } from '@/utils/relative-time';
+import { relaunchApp } from '@/stores/updater';
 import type { AgentInfo } from '@/bindings';
 
 interface ProjectRowProps {
@@ -47,7 +50,7 @@ export function SettingsPage() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const { projects, projectsLoaded, loadProjects, addProject, removeProject } = useContextStore();
-  const { status: updateStatus, lastCheckResult, checkForUpdate } = useUpdaterStore();
+  const { status: updateStatus, newVersion, downloadProgress, lastCheckTime, checkForUpdate } = useUpdaterStore();
 
   const [version, setVersion] = useState('');
 
@@ -277,12 +280,33 @@ export function SettingsPage() {
                           <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                           <span className="text-xs">{t('settings.update.checking')}</span>
                         </Button>
-                      ) : lastCheckResult === 'up-to-date' ? (
+                      ) : updateStatus === 'available' ? (
                         <div className="flex items-center gap-1.5">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Check className="h-3.5 w-3.5 text-green-500" />
-                            <span>{t('settings.update.upToDate')}</span>
-                          </div>
+                          <span className="text-xs text-primary font-medium">
+                            {t('settings.update.updateAvailable', { version: newVersion })}
+                          </span>
+                        </div>
+                      ) : updateStatus === 'downloading' ? (
+                        <div className="flex items-center gap-2 min-w-[140px]">
+                          <Progress value={downloadProgress} className="h-1.5 flex-1" />
+                          <span className="text-xs text-muted-foreground">{downloadProgress}%</span>
+                        </div>
+                      ) : updateStatus === 'ready' ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-green-600 dark:text-green-400">
+                            {t('settings.update.readyToRestart', { version: newVersion })}
+                          </span>
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs cursor-pointer"
+                            onClick={() => relaunchApp()}
+                          >
+                            {t('settings.update.restartNow')}
+                          </Button>
+                        </div>
+                      ) : updateStatus === 'error' ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-destructive">{t('settings.update.checkError')}</span>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -292,9 +316,15 @@ export function SettingsPage() {
                             <RefreshCw className="h-3 w-3" />
                           </Button>
                         </div>
-                      ) : lastCheckResult === 'error' ? (
+                      ) : lastCheckTime ? (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-destructive">{t('settings.update.checkError')}</span>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Check className="h-3.5 w-3.5 text-green-500" />
+                            <span>{t('settings.update.upToDate')}</span>
+                            <span className="text-muted-foreground/60">
+                              {t(formatRelativeTime(lastCheckTime).key, formatRelativeTime(lastCheckTime).params)}
+                            </span>
+                          </div>
                           <Button
                             variant="ghost"
                             size="icon"

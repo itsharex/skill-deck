@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { listen } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { Header } from '@/components/layout/Header';
 import { SkillsPage } from '@/pages/SkillsPage';
 import { DiscoverPage } from '@/pages/DiscoverPage';
@@ -11,7 +12,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useSkillsStore } from '@/stores/skills';
 import { useUpdaterStore } from '@/stores/updater';
-import { showDownloadingToast, showReadyToast, showMacUpdateToast } from '@/components/update-toast';
+import { UpdateDialog } from '@/components/update-dialog';
 
 /** 主窗口布局 — 带 Header + Toaster */
 function MainLayout() {
@@ -26,10 +27,14 @@ function MainLayout() {
   );
 }
 
+// advanced-init-once: 防止 Strict Mode 双调用
+let didInit = false;
+
 function App() {
   const { t } = useTranslation();
   const fetchSkills = useSkillsStore((s) => s.fetchSkills);
-  const { status, newVersion, downloadProgress, currentPlatform, checkForUpdate, dismiss, shouldAutoCheck } = useUpdaterStore();
+  // rerender-defer-reads: 不订阅 error，减少不必要的 App 重渲染
+  const { status, checkForUpdate, shouldAutoCheck } = useUpdaterStore();
 
   // 监听向导窗口完成事件
   useEffect(() => {
@@ -41,31 +46,24 @@ function App() {
     };
   }, [fetchSkills]);
 
-  // 启动时自动检查更新（24h 间隔）
+  // advanced-init-once: 启动时自动检查更新，guard 防止 Strict Mode 双调用
   useEffect(() => {
+    if (didInit) return;
+    didInit = true;
     if (shouldAutoCheck()) {
       checkForUpdate();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 根据 updater 状态显示 toast
+  // 错误时弹 toast — rerender-defer-reads: 用 getState() 按需读取 error
   useEffect(() => {
-    if (!newVersion) return;
-
-    switch (status) {
-      case 'downloading':
-        showDownloadingToast(newVersion, downloadProgress, t);
-        break;
-      case 'ready':
-        showReadyToast(newVersion, dismiss, t);
-        break;
-      case 'available':
-        if (currentPlatform === 'macos') {
-          showMacUpdateToast(newVersion, dismiss, t);
-        }
-        break;
+    if (status === 'error') {
+      const error = useUpdaterStore.getState().error;
+      if (error) toast.error(t('settings.update.checkError'));
     }
-  }, [status, newVersion, downloadProgress, currentPlatform, dismiss, t]);
+  }, [status, t]);
+
+  const showUpdateDialog = status === 'available' || status === 'downloading' || status === 'ready';
 
   return (
     <BrowserRouter>
@@ -81,6 +79,7 @@ function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
+        <UpdateDialog open={showUpdateDialog} />
       </TooltipProvider>
     </BrowserRouter>
   );
