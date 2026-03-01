@@ -5,6 +5,25 @@ All notable changes to Skill Deck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **更新交互重构** — 用独立 Dialog 替代 Toast 通知：发现新版本时弹出 Dialog 展示 Release Notes（Markdown 渲染），用户确认后再下载；下载中展示进度条且不可关闭；下载完成后提供「立即重启/稍后」选项；macOS 跳转 GitHub 下载
+- **Updater Store 重写** — 新增并发保护（仅 idle/error 可触发检查）、下载中止（dismiss 设置 abortFlag）、错误退避（失败后 4h 重试 vs 正常 24h 间隔）、Release Notes 和 lastCheckTime 字段
+- **Settings 更新状态完善** — 覆盖全部 7 种状态（idle/checking/available/downloading/ready/error/idle+lastCheckTime），idle 状态展示相对时间「上次检查：5 分钟前」
+- 移除自动下载行为，改为用户在 Dialog 中确认后再开始下载
+
+### Added
+
+- **UpdateDialog 组件** — 三态更新弹窗（available/downloading/ready），react-markdown 懒加载渲染 Release Notes，下载中禁止关闭
+- **formatRelativeTime 工具函数** — 将时间戳转换为 i18n 相对时间 key（刚刚/N 分钟前/N 小时前/昨天/N 天前），含 5 个单元测试
+- **Updater Store 测试** — 16 个单元测试覆盖并发保护、状态转换、错误退避、dismiss 重置
+
+### Removed
+
+- 移除 `update-toast.tsx`（Toast 更新通知），由 UpdateDialog 替代
+
 ## [0.7.0] - 2026-02-27
 
 ### Added
