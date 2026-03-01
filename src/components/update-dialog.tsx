@@ -60,8 +60,8 @@ export function UpdateDialog({ open }: { open: boolean }) {
               </DialogTitle>
               <DialogDescription>
                 {isMac
-                  ? t('settings.update.goToDownload')
-                  : t('settings.update.updateNow')}
+                  ? t('settings.update.availableDescMac')
+                  : t('settings.update.availableDesc')}
               </DialogDescription>
             </DialogHeader>
 

@@ -156,6 +156,8 @@
       "later": "稍后再说",
       "dismiss": "忽略",
       "goToDownload": "前往下载",
+      "availableDescMac": "macOS 不支持自动更新，请前往 GitHub 下载最新版本。",
+      "availableDesc": "下载并安装更新以获取最新功能和修复。",
       "viewUpdate": "查看更新",
       "updateAvailable": "v{{version}} 可用",
       "readyToRestart": "v{{version}} 已就绪，重启即可更新",

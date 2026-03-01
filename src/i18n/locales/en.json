@@ -156,6 +156,8 @@
       "later": "Later",
       "dismiss": "Dismiss",
       "goToDownload": "Download",
+      "availableDescMac": "Auto-update is not supported on macOS. Please download the latest version from GitHub.",
+      "availableDesc": "Download and install the update to get the latest features and bug fixes.",
       "viewUpdate": "View Update",
       "updateAvailable": "v{{version}} available",
       "readyToRestart": "v{{version}} ready, restart to update",
