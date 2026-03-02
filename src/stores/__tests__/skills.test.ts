@@ -26,7 +26,7 @@ vi.mock('@/hooks/useTauriApi', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
 const makeSkill = (name: string, overrides: Partial<InstalledSkill> = {}): InstalledSkill => ({
@@ -56,7 +56,9 @@ describe('useSkillsStore', () => {
       error: null,
       auditCache: {},
       isSyncing: false,
-      updatingSkill: null,
+      checkingUpdateScopes: new Set(),
+      updatingSkills: new Map(),
+      updateAllCancelled: false,
       detailSkill: null,
       deleteTarget: null,
       agentDetails: null,
@@ -173,7 +175,7 @@ describe('useSkillsStore', () => {
         summary: { total: 1, succeeded: 0, partial: 1, failed: 0, skipped: 0 },
       });
 
-      await useSkillsStore.getState().updateSkill('toolkit');
+      await useSkillsStore.getState().updateSkill('toolkit', 'global');
 
       expect(mockUpdateSkill).toHaveBeenCalledWith({
         scope: 'global',
