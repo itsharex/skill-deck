@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uninstaller 简化** — 提取 `resolve_agents_to_remove` 辅助函数，移除冗余的 `detect_installed` 中间回退逻辑
 - **CompleteStep 重构** — 统一为 skill 分组卡片展示，显示 agent 覆盖率统计（如 2/3 agents），失败明细可折叠展开
 - **安装重试行为分离** — 提取 `InstallBehavior` 结构体，重试模式下跳过 Universal Agent 自动填充和 agent 持久化
+- **Install/Update 共享核心** — 提取 `install_skill_to_agents()` 共享函数，install 和 update 命令复用同一安装逻辑；`PerAgentInstallResult` 携带完整 path/canonical_path/mode 数据
+- **Update 文件系统检测** — 更新命令通过 `detect_installed_agents_for_skill()` 扫描文件系统确定目标 agents（非 lock 元数据），通过 `detect_install_mode()` 检测 symlink/junction vs copy 模式
+- **Skills Store 状态重设计** — `updatingSkill: string | null` 升级为 `updatingSkills: Map<string, status>` 支持批量并行状态追踪；新增 `checkingUpdateScopes: Set<string>` 实现 per-scope 独立检测状态
+- **更新检测缓存** — 新增 scope 级 TTL 缓存（5 分钟），切换 scope 时避免重复网络请求；stale context guard 防止异步写入过期数据
+- **SkillsPanel selector 优化** — `checkingUpdateScopes` 从整个 Set 订阅改为派生 boolean selector（`rerender-derived-state` 规则），减少无关重渲染
 
 ### Added
 
@@ -27,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **逐 Skill 重试** — CompleteStep 新增「重试该 Skill」按钮，仅对失败的 skill + 失败的 agents 重新安装（通过 `retrySkillName`/`retryAgents` 状态传递）；后端 `InstallParams` 新增 `retry` 标志
 - **UpdateSkillResponse 类型体系** — 新增 `models/update.rs`：`UpdateSkillResponse`、`UpdateSkillItemResult`、`UpdateSkillAgentResult`、`UpdateSkillSummary`、`UpdateSkillStatus`、`UpdateSkillAgentStatus`
 - **11 个新增测试** — 6 个 Rust 测试（derive_skill_status 边界、summarize_results、InstallBehavior、serde 序列化）+ 2 个 CompleteStep 组件测试 + 2 个 useTauriApi 测试 + 1 个 skills store 测试
+- **Section 级 Update All** — SkillsSection 标题栏新增「全部更新」按钮，支持批量串行更新（queued → updating → done/failed），进度计数器和取消按钮
+- **SkillCard 内联进度条** — 更新时展示 phase-based 进度条（cloning 35% → installing 70% → writing_lock 90%），监听 `update-progress` Tauri 事件
+- **手动检查更新** — 每个 Section 新增 Check 按钮，调用 `forceCheckUpdates()` 强制刷新指定 scope 的更新检测（绕过 TTL 缓存）
+- **Update 进度事件** — 后端 `update_skill` 在 clone/install/lock-write 阶段发送 `update-progress` 事件，前端 SkillCard 响应并展示阶段标签
 
 ### Removed
 
