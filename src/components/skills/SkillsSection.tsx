@@ -1,5 +1,5 @@
 // src/components/skills/SkillsSection.tsx
-import { useMemo, memo } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,17 +20,22 @@ interface SkillsSectionProps {
   pathExists?: boolean;
   /** 项目路径（仅 project scope，用于提示信息） */
   projectPath?: string;
-  /** 当前正在更新的 skill 名称 */
-  updatingSkill?: string | null;
+  /** 各 skill 的更新状态 */
+  updatingSkills: Map<string, 'queued' | 'updating' | 'done' | 'failed'>;
+  /** 是否正在检查更新 */
+  isCheckingUpdates?: boolean;
   /** Agent display name 映射（agentId → displayName） */
   agentDisplayNames?: Map<AgentType, string>;
   /** 审计数据缓存（skillName → SkillAuditData） */
   auditCache?: Record<string, SkillAuditData>;
   onSkillClick: (skill: InstalledSkill) => void;
-  onUpdate: (skillName: string) => void;
+  onUpdate: (skillName: string, scope: SkillScope) => Promise<void>;
+  onUpdateAll: (scope: SkillScope) => Promise<void>;
+  onCancelUpdateAll: () => void;
   onDelete: (skill: InstalledSkill) => void;
   onToggleAgent: (skillName: string, agentId: string) => void;
   onAdd: () => void;
+  onCheckUpdates?: () => void;
   emptyState?: React.ReactNode;
 }
 
@@ -41,18 +46,39 @@ export const SkillsSection = memo(function SkillsSection({
   conflictSkillNames = EMPTY_CONFLICT_SET,
   pathExists = true,
   projectPath,
-  updatingSkill,
+  updatingSkills,
+  isCheckingUpdates = false,
   agentDisplayNames = EMPTY_DISPLAY_NAMES,
   auditCache = EMPTY_AUDIT_CACHE,
   onSkillClick,
   onUpdate,
+  onUpdateAll,
+  onCancelUpdateAll,
   onDelete,
   onToggleAgent,
   onAdd,
+  onCheckUpdates,
   emptyState,
 }: SkillsSectionProps) {
   const { t } = useTranslation();
-  const updatesCount = useMemo(() => skills.filter((s) => s.hasUpdate).length, [skills]);
+
+  // 单次遍历派生所有更新相关状态（js-combine-iterations）— 仅统计当前 section 的 skills
+  let updatesCount = 0;
+  let isAnyUpdating = false;
+  let completedCount = 0;
+  let totalUpdating = 0;
+  for (const skill of skills) {
+    if (skill.hasUpdate) updatesCount++;
+    const status = updatingSkills.get(skill.name);
+    if (status) {
+      totalUpdating++;
+      if (status === 'queued' || status === 'updating') {
+        isAnyUpdating = true;
+      } else {
+        completedCount++;
+      }
+    }
+  }
 
   return (
     <section className="mb-6">
@@ -62,13 +88,45 @@ export const SkillsSection = memo(function SkillsSection({
           <h2 className="text-sm font-semibold text-foreground">
             {title} ({skills.length})
           </h2>
-          {updatesCount > 0 && (
+          {isCheckingUpdates && updatesCount === 0 && (
+            <>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="text-xs text-muted-foreground animate-pulse">
+                {t('skills.checking')}
+              </span>
+            </>
+          )}
+
+          {isAnyUpdating ? (
+            <>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="text-xs font-medium text-warning">
+                {t('skills.updateAllProgress', { completed: completedCount, total: totalUpdating })}
+              </span>
+              <Button variant="ghost" size="sm" className="h-5 px-1.5 text-xs text-muted-foreground cursor-pointer"
+                onClick={() => onCancelUpdateAll()}>
+                {t('skills.cancel')}
+              </Button>
+            </>
+          ) : updatesCount > 0 ? (
             <>
               <span className="text-muted-foreground/50">·</span>
               <span className="text-xs font-medium text-warning">
                 {updatesCount} {t(updatesCount === 1 ? 'skills.update' : 'skills.updates')}
               </span>
+              <Button variant="outline" size="sm" className="h-5 px-1.5 text-xs cursor-pointer"
+                onClick={() => onUpdateAll(scope)}>
+                {t('skills.updateAll')}
+              </Button>
             </>
+          ) : null}
+          {/* Check 按钮：不在 batch 更新中、有 skills 时始终显示 */}
+          {!isAnyUpdating && onCheckUpdates && skills.length > 0 && (
+            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-xs text-muted-foreground cursor-pointer"
+              disabled={isCheckingUpdates}
+              onClick={onCheckUpdates}>
+              {t('skills.checkUpdates')}
+            </Button>
           )}
         </div>
         {/* 路径不存在时隐藏 Add 按钮 */}
@@ -101,21 +159,24 @@ export const SkillsSection = memo(function SkillsSection({
             emptyState
           ) : (
             <div className="grid gap-3">
-              {skills.map((skill) => (
-                <SkillCard
-                  key={skill.name}
-                  skill={skill}
-                  displayScope={scope}
-                  hasConflict={conflictSkillNames.has(skill.name)}
-                  isUpdating={updatingSkill === skill.name}
-                  agentDisplayNames={agentDisplayNames}
-                  riskLevel={auditCache[skill.name]?.risk}
-                  onClick={onSkillClick}
-                  onUpdate={onUpdate}
-                  onDelete={onDelete}
-                  onToggleAgent={onToggleAgent}
-                />
-              ))}
+              {skills.map((skill) => {
+                const updateStatus = updatingSkills.get(skill.name);
+                return (
+                  <SkillCard
+                    key={skill.name}
+                    skill={skill}
+                    displayScope={scope}
+                    hasConflict={conflictSkillNames.has(skill.name)}
+                    updateStatus={updateStatus}
+                    agentDisplayNames={agentDisplayNames}
+                    riskLevel={auditCache[skill.name]?.risk}
+                    onClick={onSkillClick}
+                    onUpdate={(name) => onUpdate(name, scope)}
+                    onDelete={onDelete}
+                    onToggleAgent={onToggleAgent}
+                  />
+                );
+              })}
             </div>
           )}
         </>

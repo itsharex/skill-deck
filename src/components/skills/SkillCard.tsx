@@ -1,6 +1,7 @@
 // src/components/skills/SkillCard.tsx
-import { memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { listen } from '@tauri-apps/api/event';
 import { cn, formatTime, toTitleCase } from '@/lib/utils';
 import {
   ArrowUpCircle,
@@ -25,14 +26,32 @@ import { RiskBadge } from './RiskBadge';
 /** 默认空 Map，避免每次 render 创建新引用 — rerender-memo-with-default-value 规则 */
 const EMPTY_DISPLAY_NAMES = new Map<AgentType, string>();
 
+function phaseToPercent(phase: string | null): string {
+  switch (phase) {
+    case 'cloning': return '35%';
+    case 'installing': return '70%';
+    case 'writing_lock': return '90%';
+    default: return '10%';
+  }
+}
+
+function phaseToLabel(phase: string | null, t: (key: string) => string): string {
+  switch (phase) {
+    case 'cloning': return t('skills.updatePhaseCloning');
+    case 'installing': return t('skills.updatePhaseInstalling');
+    case 'writing_lock': return t('skills.updatePhaseWritingLock');
+    default: return t('skills.updatePhaseCloning');
+  }
+}
+
 interface SkillCardProps {
   skill: InstalledSkill;
   /** 当前显示的 scope（用于决定图标） */
   displayScope: SkillScope;
   /** 是否存在冲突（同时在 project 和 global 安装） */
   hasConflict?: boolean;
-  /** 是否正在更新中 */
-  isUpdating?: boolean;
+  /** 更新状态（来自 updatingSkills Map） */
+  updateStatus?: 'queued' | 'updating' | 'done' | 'failed';
   /** Agent display name 映射（agentId → displayName） */
   agentDisplayNames?: Map<AgentType, string>;
   /** 安全审计风险等级 */
@@ -48,7 +67,7 @@ export const SkillCard = memo(function SkillCard({
   skill,
   displayScope,
   hasConflict = false,
-  isUpdating = false,
+  updateStatus,
   agentDisplayNames = EMPTY_DISPLAY_NAMES,
   riskLevel,
   onClick,
@@ -57,6 +76,31 @@ export const SkillCard = memo(function SkillCard({
   onToggleAgent,
 }: SkillCardProps) {
   const { t, i18n } = useTranslation();
+
+  const [updatePhase, setUpdatePhase] = useState<string | null>(null);
+  // React-recommended pattern: adjust state during render when a prop changes
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [prevUpdateStatus, setPrevUpdateStatus] = useState(updateStatus);
+  if (prevUpdateStatus !== updateStatus) {
+    setPrevUpdateStatus(updateStatus);
+    if (updatePhase !== null) {
+      setUpdatePhase(null);
+    }
+  }
+
+  useEffect(() => {
+    if (updateStatus !== 'updating') return;
+
+    const unlisten = listen<{ skillName: string; phase: string }>('update-progress', (event) => {
+      if (event.payload.skillName === skill.name) {
+        setUpdatePhase(event.payload.phase);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [updateStatus, skill.name]);
 
   const ScopeIcon = displayScope === 'global' ? Globe : Folder;
   const scopeTooltip = t(`skills.scopeIcon.${displayScope}`);
@@ -68,7 +112,7 @@ export const SkillCard = memo(function SkillCard({
   return (
       <Card
         className={cn(
-          "py-0 gap-0 cursor-pointer transition-colors hover:bg-accent/50",
+          "relative py-0 gap-0 cursor-pointer transition-colors hover:bg-accent/50",
           skill.hasUpdate && "border-l-2 border-l-warning"
         )}
         onClick={() => onClick?.(skill)}
@@ -117,20 +161,25 @@ export const SkillCard = memo(function SkillCard({
 
             {/* Action buttons */}
             <div className="flex items-center gap-0.5 sm:gap-1">
-              {skill.hasUpdate && (
+              {updateStatus === 'queued' && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  {t('skills.queued')}
+                </Badge>
+              )}
+              {(updateStatus === 'updating' || (skill.hasUpdate && !updateStatus)) && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-warning hover:text-warning hover:bg-warning/10 cursor-pointer"
                   aria-label={t('skills.actions.update')}
                   title={t('skills.actions.update')}
-                  disabled={isUpdating}
+                  disabled={!!updateStatus}
                   onClick={(e) => {
                     e.stopPropagation();
                     onUpdate?.(skill.name);
                   }}
                 >
-                  <ArrowUpCircle className={`h-3.5 w-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
+                  <ArrowUpCircle className={cn('h-3.5 w-3.5', updateStatus === 'updating' && 'animate-spin')} />
                 </Button>
               )}
               <Button
@@ -195,6 +244,22 @@ export const SkillCard = memo(function SkillCard({
             ))}
           </div>
         </CardContent>
+        {updateStatus === 'updating' && (
+          <div className="absolute bottom-0 left-0 right-0">
+            <div className="h-0.5 bg-warning/20 overflow-hidden">
+              <div className="h-full bg-warning transition-all duration-500" style={{ width: phaseToPercent(updatePhase) }} />
+            </div>
+            <div className="px-3 py-0.5 text-[10px] text-muted-foreground">
+              {phaseToLabel(updatePhase, t)}
+            </div>
+          </div>
+        )}
+        {updateStatus === 'done' && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-success transition-opacity duration-700" />
+        )}
+        {updateStatus === 'failed' && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-destructive" />
+        )}
       </Card>
   );
 });

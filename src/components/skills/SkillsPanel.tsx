@@ -37,7 +37,13 @@ export function SkillsPanel() {
   const loading = useSkillsStore((s) => s.loading);
   const error = useSkillsStore((s) => s.error);
   const isSyncing = useSkillsStore((s) => s.isSyncing);
-  const updatingSkill = useSkillsStore((s) => s.updatingSkill);
+  const isCheckingGlobal = useSkillsStore((s) => s.checkingUpdateScopes.has('global'));
+  const isCheckingProject = useSkillsStore((s) => s.checkingUpdateScopes.has(selectedContext));
+  const syncUpdates = useSkillsStore((s) => s.syncUpdates);
+  const forceCheckUpdates = useSkillsStore((s) => s.forceCheckUpdates);
+  const updatingSkills = useSkillsStore((s) => s.updatingSkills);
+  const updateAllInSection = useSkillsStore((s) => s.updateAllInSection);
+  const cancelUpdateAll = useSkillsStore((s) => s.cancelUpdateAll);
   const fetchSkills = useSkillsStore((s) => s.fetchSkills);
   const syncSkills = useSkillsStore((s) => s.syncSkills);
   const storeUpdateSkill = useSkillsStore((s) => s.updateSkill);
@@ -54,10 +60,14 @@ export function SkillsPanel() {
   // 搜索优化：列表过滤作为低优先级更新 (rerender-transitions)
   const deferredQuery = useDeferredValue(searchQuery);
 
-  // ③ 数据初始化 — selectedContext 变化时重新获取
+  // ③ 数据初始化 — selectedContext 变化时重新获取，然后自动检测更新
   useEffect(() => {
-    fetchSkills();
-  }, [selectedContext, fetchSkills]);
+    let ignore = false;
+    fetchSkills().then(() => {
+      if (!ignore) syncUpdates(); // 后台检测更新，不阻塞 UI
+    });
+    return () => { ignore = true; };
+  }, [selectedContext, fetchSkills, syncUpdates]);
 
   // ③b 审计数据 — skills 变化后获取（仅对有 source 的 skills 请求）
   useEffect(() => {
@@ -131,6 +141,14 @@ export function SkillsPanel() {
     openAdd('project');
   }, [openAdd]);
 
+  const handleCheckProjectUpdates = useCallback(() => {
+    forceCheckUpdates('project');
+  }, [forceCheckUpdates]);
+
+  const handleCheckGlobalUpdates = useCallback(() => {
+    forceCheckUpdates('global');
+  }, [forceCheckUpdates]);
+
   // 缓存 emptyState JSX (rerender-memo-with-default-value)
   const projectEmptyState = useMemo(() => <ProjectEmptyState />, []);
   const globalEmptyState = useMemo(
@@ -182,14 +200,18 @@ export function SkillsPanel() {
             conflictSkillNames={conflictSkillNames}
             pathExists={projectPathExists}
             projectPath={selectedContext}
-            updatingSkill={updatingSkill}
+            updatingSkills={updatingSkills}
+            isCheckingUpdates={isCheckingProject}
             agentDisplayNames={agentDisplayNames}
             auditCache={auditCache}
             onSkillClick={openDetail}
             onUpdate={storeUpdateSkill}
+            onUpdateAll={updateAllInSection}
+            onCancelUpdateAll={cancelUpdateAll}
             onDelete={handleDeleteProject}
             onToggleAgent={handleToggleAgent}
             onAdd={handleAddProject}
+            onCheckUpdates={handleCheckProjectUpdates}
             emptyState={projectEmptyState}
           />
         )}
@@ -200,14 +222,18 @@ export function SkillsPanel() {
           skills={filteredGlobalSkills}
           scope="global"
           conflictSkillNames={conflictSkillNames}
-          updatingSkill={updatingSkill}
+          updatingSkills={updatingSkills}
+          isCheckingUpdates={isCheckingGlobal}
           agentDisplayNames={agentDisplayNames}
           auditCache={auditCache}
           onSkillClick={openDetail}
           onUpdate={storeUpdateSkill}
+          onUpdateAll={updateAllInSection}
+          onCancelUpdateAll={cancelUpdateAll}
           onDelete={handleDeleteGlobal}
           onToggleAgent={handleToggleAgent}
           onAdd={handleAddGlobal}
+          onCheckUpdates={handleCheckGlobalUpdates}
           emptyState={globalEmptyState}
         />
       </div>
