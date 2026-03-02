@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 
 /// Local lock 文件版本号
 /// 对应 CLI: CURRENT_VERSION = 1 (local-lock.ts:6)
@@ -154,7 +156,11 @@ pub fn write_local_lock(
         fs::create_dir_all(parent)?;
     }
     let content = serde_json::to_string_pretty(lock)? + "\n";
-    fs::write(&lock_path, content)?;
+    let parent = lock_path.parent().unwrap_or(Path::new("."));
+    let mut tmp = NamedTempFile::new_in(parent)?;
+    tmp.write_all(content.as_bytes())?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(&lock_path).map_err(|e| e.error)?;
     Ok(())
 }
 

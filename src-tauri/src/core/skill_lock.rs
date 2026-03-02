@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Write;
+use std::path::Path;
+use tempfile::NamedTempFile;
 
 use super::paths::PATHS;
 use crate::error::AppError;
@@ -155,8 +158,12 @@ pub fn write_skill_lock(lock: &SkillLockFile) -> Result<(), AppError> {
     }
 
     // 序列化为 pretty JSON 并写入
-    let content = serde_json::to_string_pretty(lock)?;
-    std::fs::write(&lock_path, content)?;
+    let content = serde_json::to_string_pretty(lock)? + "\n";
+    let parent = lock_path.parent().unwrap_or(Path::new("."));
+    let mut tmp = NamedTempFile::new_in(parent)?;
+    tmp.write_all(content.as_bytes())?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(&lock_path).map_err(|e| e.error)?;
 
     Ok(())
 }
@@ -170,8 +177,12 @@ pub fn write_scoped_lock(
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let content = serde_json::to_string_pretty(lock)?;
-    std::fs::write(&lock_path, content)?;
+    let content = serde_json::to_string_pretty(lock)? + "\n";
+    let parent = lock_path.parent().unwrap_or(Path::new("."));
+    let mut tmp = NamedTempFile::new_in(parent)?;
+    tmp.write_all(content.as_bytes())?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(&lock_path).map_err(|e| e.error)?;
     Ok(())
 }
 
@@ -294,6 +305,7 @@ pub fn get_last_selected_agents() -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn test_empty_lock_file() {
@@ -357,5 +369,43 @@ mod tests {
         // 空的 Option 字段不应该被序列化
         assert!(!json.contains("dismissed"));
         assert!(!json.contains("lastSelectedAgents"));
+    }
+
+    #[test]
+    fn test_write_scoped_lock_ends_with_newline() {
+        let temp = tempdir().unwrap();
+        let project_path = temp.path().to_string_lossy().to_string();
+
+        let lock = SkillLockFile::empty();
+        write_scoped_lock(&lock, Some(&project_path)).unwrap();
+
+        let lock_path = temp.path().join(".agents").join(".skill-lock.json");
+        let content = std::fs::read_to_string(&lock_path).unwrap();
+        assert!(content.ends_with('\n'), "skill-lock should end with newline");
+    }
+
+    #[test]
+    fn test_write_scoped_lock_atomic_roundtrip() {
+        let temp = tempdir().unwrap();
+        let project_path = temp.path().to_string_lossy().to_string();
+
+        let mut lock = SkillLockFile::empty();
+        lock.skills.insert(
+            "test".to_string(),
+            SkillLockEntry {
+                source: "owner/repo".to_string(),
+                source_type: "github".to_string(),
+                source_url: "https://github.com/owner/repo".to_string(),
+                skill_path: Some("skills/test/SKILL.md".to_string()),
+                skill_folder_hash: "abc123".to_string(),
+                installed_at: "2024-01-01T00:00:00Z".to_string(),
+                updated_at: "2024-01-01T00:00:00Z".to_string(),
+                plugin_name: None,
+            },
+        );
+
+        write_scoped_lock(&lock, Some(&project_path)).unwrap();
+        let read_back = read_scoped_lock(Some(&project_path)).unwrap();
+        assert!(read_back.skills.contains_key("test"));
     }
 }

@@ -46,17 +46,7 @@ pub fn remove_skill(
     let sanitized_name = sanitize_name(skill_name);
 
     // 1. 确定要操作的 agents
-    let agents_to_remove: Vec<AgentType> = if let Some(specified) = target_agents {
-        specified.to_vec()
-    } else {
-        // 自动检测（向后兼容原始行为）
-        let detected = AgentType::detect_installed();
-        if detected.is_empty() {
-            AgentType::all().collect::<Vec<_>>()
-        } else {
-            detected
-        }
-    };
+    let agents_to_remove: Vec<AgentType> = resolve_agents_to_remove(target_agents);
 
     let mut removed_paths = Vec::new();
 
@@ -174,6 +164,12 @@ pub fn remove_skill(
     })
 }
 
+fn resolve_agents_to_remove(target_agents: Option<&[AgentType]>) -> Vec<AgentType> {
+    target_agents
+        .map(|specified| specified.to_vec())
+        .unwrap_or_else(|| AgentType::all().collect::<Vec<_>>())
+}
+
 /// 删除路径（目录或 symlink）
 ///
 /// 对应 CLI: remove.ts:156-161
@@ -215,6 +211,13 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_default_agents_use_all_known_agents() {
+        let resolved = resolve_agents_to_remove(None);
+        let expected: Vec<_> = AgentType::all().collect();
+        assert_eq!(resolved, expected);
+    }
 
     #[test]
     fn test_remove_path_directory() {
