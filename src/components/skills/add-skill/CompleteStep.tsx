@@ -1,5 +1,5 @@
 // src/components/skills/add-skill/CompleteStep.tsx
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,19 +9,28 @@ import type { WizardState } from './types';
 interface CompleteStepProps {
   state: WizardState;
   onDone: () => void;
-  onRetry: () => void;
+  onRetry?: () => void;
+  onRetrySkill?: (skillName: string, failedAgents: string[]) => void;
 }
 
-export function CompleteStep({ state, onDone, onRetry }: CompleteStepProps) {
+interface SkillGroup {
+  skillName: string;
+  successful: InstallResult[];
+  failed: InstallResult[];
+}
+
+export function CompleteStep({ state, onDone, onRetry, onRetrySkill }: CompleteStepProps) {
   const { t } = useTranslation();
   const results = state.installResults;
+  const [expandedSkills, setExpandedSkills] = useState<Record<string, boolean>>({});
 
   // useMemo 必须在 early return 之前调用（rules-of-hooks）
-  const { successfulBySkill, failedBySkill } = useMemo(() => {
+  const { groups, successfulSkillCount, failedSkillCount } = useMemo(() => {
     if (!results) {
       return {
-        successfulBySkill: new Map<string, InstallResult[]>(),
-        failedBySkill: new Map<string, InstallResult[]>(),
+        groups: [] as SkillGroup[],
+        successfulSkillCount: 0,
+        failedSkillCount: 0,
       };
     }
 
@@ -40,15 +49,35 @@ export function CompleteStep({ state, onDone, onRetry }: CompleteStepProps) {
       failedMap.set(r.skillName, existing);
     }
 
-    return { successfulBySkill: successMap, failedBySkill: failedMap };
+    const allSkillNames = Array.from(new Set([...successMap.keys(), ...failedMap.keys()])).sort(
+      (a, b) => a.localeCompare(b)
+    );
+    const grouped = allSkillNames.map((skillName) => ({
+      skillName,
+      successful: successMap.get(skillName) ?? [],
+      failed: failedMap.get(skillName) ?? [],
+    }));
+
+    return {
+      groups: grouped,
+      successfulSkillCount: grouped.filter((g) => g.failed.length === 0).length,
+      failedSkillCount: grouped.filter((g) => g.failed.length > 0).length,
+    };
   }, [results]);
 
   if (!results) {
     return null;
   }
 
-  const hasFailures = results.failed.length > 0;
+  const hasFailures = failedSkillCount > 0;
   const hasSymlinkFallback = results.symlinkFallbackAgents.length > 0;
+
+  const toggleSkill = (skillName: string) => {
+    setExpandedSkills((prev) => ({
+      ...prev,
+      [skillName]: !prev[skillName],
+    }));
+  };
 
   return (
     <div className="space-y-4">
@@ -62,7 +91,7 @@ export function CompleteStep({ state, onDone, onRetry }: CompleteStepProps) {
         <h3 className="text-lg font-medium">
           {hasFailures
             ? t('addSkill.complete.partial')
-            : t('addSkill.complete.success', { count: successfulBySkill.size })}
+            : t('addSkill.complete.success', { count: successfulSkillCount })}
         </h3>
       </div>
 
@@ -70,58 +99,93 @@ export function CompleteStep({ state, onDone, onRetry }: CompleteStepProps) {
       {hasFailures && (
         <div className="flex gap-4 text-sm">
           <span className="text-green-600">
-            {t('addSkill.complete.successCount', { count: successfulBySkill.size })}
+            {t('addSkill.complete.successCount', { count: successfulSkillCount })}
           </span>
           <span className="text-destructive">
-            {t('addSkill.complete.failedCount', { count: failedBySkill.size })}
+            {t('addSkill.complete.failedCount', { count: failedSkillCount })}
           </span>
         </div>
       )}
 
       {/* Results list */}
       <div className="border rounded-md p-3 space-y-2">
-          {/* Successful */}
-          {Array.from(successfulBySkill.entries()).map(([skillName, items]) => {
-            const first = items[0];
-            const symlinkFailed = items.some((i) => i.symlinkFailed);
+        {groups.map((group) => {
+          const successCount = group.successful.length;
+          const totalCount = group.successful.length + group.failed.length;
+          const hasSkillFailures = group.failed.length > 0;
+          const expanded = expandedSkills[group.skillName] === true;
 
-            return (
-              <div
-                key={skillName}
-                className="flex items-start gap-2 p-2 bg-muted/30 rounded-md"
-              >
-                <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{first?.canonicalPath ?? skillName}</div>
-                  {symlinkFailed && (
-                    <div className="text-xs text-amber-600">
-                      {t('addSkill.complete.copied')}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Failed */}
-          {Array.from(failedBySkill.entries()).map(([skillName, items]) => {
-            const first = items[0];
-
-            return (
-              <div
-                key={skillName}
-                className="flex items-start gap-2 p-2 bg-destructive/10 rounded-md"
-              >
-                <XCircle className="h-4 w-4 text-destructive mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{skillName}</div>
-                  <div className="text-xs text-destructive">
-                    {first?.error ?? 'Unknown error'}
+          return (
+            <div
+              key={group.skillName}
+              className={`rounded-md border p-2 ${
+                hasSkillFailures ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-muted/30'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {hasSkillFailures ? (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    )}
+                    <span className="text-sm font-medium break-all">{group.skillName}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {t('addSkill.complete.agentCoverage', {
+                      success: successCount,
+                      total: totalCount,
+                    })}
                   </div>
                 </div>
+
+                {hasSkillFailures && (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      onClick={() => toggleSkill(group.skillName)}
+                    >
+                      {expanded
+                        ? t('addSkill.complete.hideFailures')
+                        : t('addSkill.complete.showFailures', { count: group.failed.length })}
+                    </Button>
+                    {onRetrySkill && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7"
+                        onClick={() =>
+                          onRetrySkill(
+                            group.skillName,
+                            group.failed.map((f) => f.agent)
+                          )
+                        }
+                      >
+                        {t('addSkill.actions.retrySkill')}
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
-            );
-          })}
+
+              {hasSkillFailures && expanded && (
+                <div className="mt-2 space-y-1 rounded-md bg-background/70 p-2">
+                  {group.failed.map((item) => (
+                    <div key={`${group.skillName}-${item.agent}`} className="text-xs">
+                      <div className="font-medium text-destructive">{item.agent}</div>
+                      <div className="text-destructive/90 break-words">
+                        {item.error ?? t('addSkill.error.unknown')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Symlink fallback warning */}
@@ -143,7 +207,7 @@ export function CompleteStep({ state, onDone, onRetry }: CompleteStepProps) {
 
       {/* Actions */}
       <div className="flex justify-end gap-2 pt-2">
-        {hasFailures && (
+        {hasFailures && onRetry && (
           <Button variant="outline" onClick={onRetry}>
             {t('addSkill.actions.retry')}
           </Button>

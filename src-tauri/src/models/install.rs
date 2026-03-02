@@ -41,6 +41,9 @@ pub struct InstallParams {
     pub project_path: Option<String>,
     /// 安装模式
     pub mode: InstallMode,
+    /// 是否为重试模式（仅重试指定 skills + agents）
+    #[serde(default)]
+    pub retry: bool,
 }
 
 /// 单个 skill 的安装结果

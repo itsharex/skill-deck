@@ -223,7 +223,7 @@ async checkUpdates(scope: Scope, projectPath: string | null) : Promise<Result<Sk
  * 本质是"重新安装"：从 lock 文件读取来源信息，构造安装 URL，复用安装逻辑。
  * 与 CLI update 命令行为一致。
  */
-async updateSkill(scope: Scope, name: string, projectPath: string | null) : Promise<Result<null, AppError>> {
+async updateSkill(scope: Scope, name: string, projectPath: string | null) : Promise<Result<UpdateSkillResponse, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("update_skill", { scope, name, projectPath }) };
 } catch (e) {
@@ -381,7 +381,11 @@ projectPath: string | null;
 /**
  * 安装模式
  */
-mode: InstallMode }
+mode: InstallMode; 
+/**
+ * 是否为重试模式（仅重试指定 skills + agents）
+ */
+retry?: boolean }
 /**
  * 单个 skill 的安装结果
  */
@@ -546,6 +550,30 @@ export type SkillScope = "global" | "project"
  * 更新检测结果
  */
 export type SkillUpdateInfo = { name: string; source: string; hasUpdate: boolean }
+/**
+ * agent 级更新结果
+ */
+export type UpdateSkillAgentResult = { agent: string; status: UpdateSkillAgentStatus; error?: string | null; durationMs?: number | null }
+/**
+ * 单个 agent 的更新状态
+ */
+export type UpdateSkillAgentStatus = "success" | "failed" | "skipped"
+/**
+ * skill 级更新结果
+ */
+export type UpdateSkillItemResult = { name: string; status: UpdateSkillStatus; error?: string | null; warnings?: string[]; durationMs?: number | null; agentResults?: UpdateSkillAgentResult[] }
+/**
+ * 更新命令返回结果
+ */
+export type UpdateSkillResponse = { results: UpdateSkillItemResult[]; summary: UpdateSkillSummary }
+/**
+ * 单个 skill 的更新状态
+ */
+export type UpdateSkillStatus = "success" | "partial" | "failed" | "skipped"
+/**
+ * 更新汇总
+ */
+export type UpdateSkillSummary = { total: number; succeeded: number; partial: number; failed: number; skipped: number }
 
 /** tauri-specta globals **/
 

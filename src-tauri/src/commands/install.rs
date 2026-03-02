@@ -30,6 +30,26 @@ struct InstallProgress {
     total: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct InstallBehavior {
+    autofill_universal: bool,
+    persist_selected_agents: bool,
+}
+
+fn compute_install_behavior(retry: bool) -> InstallBehavior {
+    if retry {
+        InstallBehavior {
+            autofill_universal: false,
+            persist_selected_agents: false,
+        }
+    } else {
+        InstallBehavior {
+            autofill_universal: true,
+            persist_selected_agents: true,
+        }
+    }
+}
+
 /// 从来源获取可用的 skills 列表
 ///
 /// # Arguments
@@ -125,6 +145,8 @@ pub async fn install_skills(app: AppHandle, params: InstallParams) -> Result<Ins
 }
 
 async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<InstallResults, AppError> {
+    let behavior = compute_install_behavior(params.retry);
+
     // 1. 解析来源
     let parsed = parse_source(&params.source)?;
 
@@ -170,12 +192,14 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
 
     // 5. 确保包含 Universal Agents（动态获取）
     let mut target_agents = params.agents.clone();
-    let universal_agents = AgentType::get_universal_agents();
+    if behavior.autofill_universal {
+        let universal_agents = AgentType::get_universal_agents();
 
-    for ua in universal_agents {
-        let ua_str = ua.to_string();
-        if !target_agents.contains(&ua_str) {
-            target_agents.push(ua_str);
+        for ua in universal_agents {
+            let ua_str = ua.to_string();
+            if !target_agents.contains(&ua_str) {
+                target_agents.push(ua_str);
+            }
         }
     }
 
@@ -292,7 +316,9 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
     }
 
     // 8. 保存选择的 agents
-    let _ = save_selected_agents(&target_agents);
+    if behavior.persist_selected_agents {
+        let _ = save_selected_agents(&target_agents);
+    }
 
     Ok(InstallResults {
         successful,
@@ -306,6 +332,20 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_retry_mode_disables_universal_autofill_and_agent_persistence() {
+        let behavior = compute_install_behavior(true);
+        assert!(!behavior.autofill_universal);
+        assert!(!behavior.persist_selected_agents);
+    }
+
+    #[test]
+    fn test_default_mode_keeps_universal_autofill_and_agent_persistence() {
+        let behavior = compute_install_behavior(false);
+        assert!(behavior.autofill_universal);
+        assert!(behavior.persist_selected_agents);
+    }
 
     #[test]
     fn test_fetch_available_local() {

@@ -8,6 +8,7 @@ import type {
   SkillScope,
   RemoveResult,
   SkillUpdateInfo,
+  UpdateSkillResponse,
   FetchResult,
   InstallParams,
   InstallResults,
@@ -18,7 +19,7 @@ import type {
 } from '@/bindings';
 
 // 重导出类型供组件使用
-export type { AgentInfo, AgentType, ListSkillsResult, SkillScope, RemoveResult, SkillUpdateInfo, FetchResult, InstallParams, InstallResults, SkillDeckConfig, SkillAuditData, SkillAgentDetails };
+export type { AgentInfo, AgentType, ListSkillsResult, SkillScope, RemoveResult, SkillUpdateInfo, UpdateSkillResponse, FetchResult, InstallParams, InstallResults, SkillDeckConfig, SkillAuditData, SkillAgentDetails };
 
 /** 解包 tauri-specta Result 类型，error 时抛出异常（保持与原有 invoke 行为一致） */
 function unwrap<T, E>(result: { status: "ok"; data: T } | { status: "error"; error: E }): T {
@@ -197,8 +198,8 @@ export async function updateSkill(params: {
   scope: Scope;
   name: string;
   projectPath?: string;
-}): Promise<void> {
-  unwrap(await commands.updateSkill(params.scope, params.name, params.projectPath ?? null));
+}): Promise<UpdateSkillResponse> {
+  return unwrap(await commands.updateSkill(params.scope, params.name, params.projectPath ?? null));
 }
 
 // ============ 安全审计 API ============

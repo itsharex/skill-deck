@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import { Progress } from '@/components/ui/progress';
-import { installSkills, saveLastSelectedAgents } from '@/hooks/useTauriApi';
+import { installSkills } from '@/hooks/useTauriApi';
 import { parseInstallError } from '@/utils/parse-install-error';
 import { toAppError } from '@/utils/to-app-error';
-import type { InstallParams } from '@/bindings';
 import type { WizardState } from './types';
 
 /** 克隆进度事件（与 SourceStep 共用后端事件） */
@@ -55,6 +54,8 @@ export function InstallingStep({ state, updateState, scope, projectPath }: Insta
     source: state.source,
     selectedSkills: state.selectedSkills,
     selectedAgents: state.selectedAgents,
+    retrySkillName: state.retrySkillName,
+    retryAgents: state.retryAgents ?? [],
     mode: state.mode,
     availableSkills: state.availableSkills,
     scope,
@@ -65,6 +66,8 @@ export function InstallingStep({ state, updateState, scope, projectPath }: Insta
       source: state.source,
       selectedSkills: state.selectedSkills,
       selectedAgents: state.selectedAgents,
+      retrySkillName: state.retrySkillName,
+      retryAgents: state.retryAgents ?? [],
       mode: state.mode,
       availableSkills: state.availableSkills,
       scope,
@@ -98,31 +101,38 @@ export function InstallingStep({ state, updateState, scope, projectPath }: Insta
     hasStartedRef.current = true;
 
     async function doInstall() {
-      const { source, selectedSkills, selectedAgents, mode, scope: installScope, projectPath: installProjectPath } = installParamsRef.current;
-
-      const params: InstallParams = {
+      const {
         source,
-        skills: selectedSkills,
-        agents: selectedAgents,
+        selectedSkills,
+        selectedAgents,
+        retrySkillName,
+        retryAgents,
+        mode,
+        scope: installScope,
+        projectPath: installProjectPath,
+      } = installParamsRef.current;
+
+      const isRetry = Boolean(retrySkillName && retryAgents.length > 0);
+      const targetSkills = isRetry && retrySkillName ? [retrySkillName] : selectedSkills;
+      const targetAgents = isRetry ? retryAgents : selectedAgents;
+
+      const params = {
+        source,
+        skills: targetSkills,
+        agents: targetAgents,
         scope: installScope,
         projectPath: installScope === 'project' ? (installProjectPath ?? null) : null,
         mode,
+        retry: isRetry,
       };
 
       try {
         const results = await installSkills(params);
 
-        // 安装成功后静默保存选择的 agents
-        if (results.failed.length === 0) {
-          try {
-            await saveLastSelectedAgents(selectedAgents);
-          } catch (error) {
-            console.error('Failed to save selected agents:', error);
-          }
-        }
-
         updateStateRef.current({
           installResults: results,
+          retrySkillName: undefined,
+          retryAgents: undefined,
           step: results.failed.length > 0 ? 'error' : 'complete',
         });
       } catch (error) {
@@ -139,6 +149,8 @@ export function InstallingStep({ state, updateState, scope, projectPath }: Insta
             failed: [],
             symlinkFallbackAgents: [],
           },
+          retrySkillName: undefined,
+          retryAgents: undefined,
           installError,
           step: 'error',
         });

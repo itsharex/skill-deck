@@ -1,6 +1,7 @@
 // src/stores/__tests__/skills.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { InstalledSkill, SkillAgentDetails } from '@/bindings';
+import { toast } from 'sonner';
 import { useSkillsStore } from '../skills';
 import { useContextStore } from '../context';
 
@@ -25,7 +26,7 @@ vi.mock('@/hooks/useTauriApi', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
 const makeSkill = (name: string, overrides: Partial<InstalledSkill> = {}): InstalledSkill => ({
@@ -44,6 +45,8 @@ describe('useSkillsStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useContextStore.setState({ selectedContext: 'global' });
+    mockListSkills.mockResolvedValue({ skills: [], pathExists: true });
+    mockCheckUpdates.mockResolvedValue([]);
     useSkillsStore.setState({
       globalSkills: [],
       projectSkills: [],
@@ -145,6 +148,41 @@ describe('useSkillsStore', () => {
       expect(useSkillsStore.getState().deleteTarget).toBeNull();
       expect(useSkillsStore.getState().agentDetails).toBeNull();
       expect(useSkillsStore.getState().loadingAgentDetails).toBe(false);
+    });
+  });
+
+  describe('updateSkill', () => {
+    it('shows partial + warning feedback using update response details', async () => {
+      useSkillsStore.setState({
+        globalSkills: [makeSkill('toolkit', { hasUpdate: true })],
+        projectSkills: [],
+      });
+
+      mockUpdateSkill.mockResolvedValue({
+        results: [{
+          name: 'toolkit',
+          status: 'partial',
+          error: 'Some agents failed',
+          warnings: ['Failed to write global lock: permission denied'],
+          durationMs: 20,
+          agentResults: [
+            { agent: 'cursor', status: 'success', error: null, durationMs: 12 },
+            { agent: 'windsurf', status: 'failed', error: 'permission denied', durationMs: 8 },
+          ],
+        }],
+        summary: { total: 1, succeeded: 0, partial: 1, failed: 0, skipped: 0 },
+      });
+
+      await useSkillsStore.getState().updateSkill('toolkit');
+
+      expect(mockUpdateSkill).toHaveBeenCalledWith({
+        scope: 'global',
+        name: 'toolkit',
+        projectPath: undefined,
+      });
+      expect(toast.warning).toHaveBeenCalledTimes(2);
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
     });
   });
 });

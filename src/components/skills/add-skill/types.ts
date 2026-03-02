@@ -78,4 +78,6 @@ export interface WizardState {
   // Installing
   installResults: InstallResults | null;
   installError?: InstallError;
+  retrySkillName?: string;
+  retryAgents?: string[];
 }

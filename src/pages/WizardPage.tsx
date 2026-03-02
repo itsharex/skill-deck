@@ -63,6 +63,8 @@ function createInitialState(params: {
     preSelectedSkills: [],
     preSelectedAgents: [],
     installResults: null,
+    retrySkillName: undefined,
+    retryAgents: undefined,
   };
 }
 
@@ -132,7 +134,24 @@ export function WizardPage() {
 
   // 重试安装 — 清除错误状态，递增 key 强制 InstallingStep 重新挂载
   const handleRetryInstall = useCallback(() => {
-    updateState({ installResults: null, installError: undefined, step: 'installing' });
+    updateState({
+      installResults: null,
+      installError: undefined,
+      retrySkillName: undefined,
+      retryAgents: undefined,
+      step: 'installing',
+    });
+    setInstallKey((k) => k + 1);
+  }, [updateState]);
+
+  const handleRetryFailedSkill = useCallback((skillName: string, failedAgents: string[]) => {
+    updateState({
+      installResults: null,
+      installError: undefined,
+      retrySkillName: skillName,
+      retryAgents: failedAgents,
+      step: 'installing',
+    });
     setInstallKey((k) => k + 1);
   }, [updateState]);
 
@@ -220,6 +239,7 @@ export function WizardPage() {
             state={state}
             onDone={handleDone}
             onRetry={() => goToStep('confirm')}
+            onRetrySkill={handleRetryFailedSkill}
           />
         );
       case 'error':
@@ -238,6 +258,7 @@ export function WizardPage() {
             state={state}
             onDone={handleDone}
             onRetry={() => goToStep('confirm')}
+            onRetrySkill={handleRetryFailedSkill}
           />
         );
       default:

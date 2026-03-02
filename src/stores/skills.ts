@@ -221,12 +221,51 @@ export const useSkillsStore = create<SkillsState>()((set, get) => ({
 
     set({ updatingSkill: skillName });
     try {
-      await apiUpdateSkill({
+      const response = await apiUpdateSkill({
         scope,
         name: skillName,
         projectPath: isProjectSkill ? selectedContext : undefined,
       });
-      toast.success(t('skills.updateSuccess', { name: skillName }));
+
+      const item = response.results.find((r) => r.name === skillName) ?? response.results[0];
+      const agentResults = item?.agentResults ?? [];
+      const succeededAgents = agentResults.filter((r) => r.status === 'success').length;
+      const failedAgents = agentResults.filter((r) => r.status === 'failed');
+      const failedAgentNames = failedAgents.map((r) => r.agent).join(', ');
+
+      if (!item || item.status === 'success') {
+        toast.success(t('skills.updateSuccess', { name: skillName }));
+      } else if (item.status === 'partial') {
+        toast.warning(
+          t('skills.updatePartial', {
+            name: skillName,
+            success: succeededAgents,
+            total: agentResults.length,
+            failed: failedAgents.length,
+            failedAgents: failedAgentNames,
+          })
+        );
+      } else if (item.status === 'skipped') {
+        toast.warning(t('skills.updateSkipped', { name: skillName }));
+      } else {
+        toast.error(
+          t('skills.updateError', {
+            name: skillName,
+            error: item.error ?? t('skills.updateFailedUnknown'),
+          })
+        );
+      }
+
+      if (item?.warnings?.length) {
+        toast.warning(
+          t('skills.updateWarning', {
+            name: skillName,
+            count: item.warnings.length,
+            detail: item.warnings[0],
+          })
+        );
+      }
+
       await get().syncSkills();
     } catch (e) {
       toast.error(
