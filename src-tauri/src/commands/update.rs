@@ -5,12 +5,13 @@
 
 use crate::core::agents::AgentType;
 use crate::core::fetch_skill_folder_hash;
+use crate::core::installer::{detect_install_mode, detect_installed_agents_for_skill, install_skill_to_agents};
 use crate::core::local_lock::{
     add_skill_to_local_lock, compute_skill_folder_hash, read_local_lock, LocalSkillLockEntry,
 };
 use crate::core::skill_lock::{add_skill_to_lock, read_scoped_lock, SkillLockFile};
 use crate::core::{
-    clone_repo_with_progress, discover_skills, install_skill_for_agent, parse_source,
+    clone_repo_with_progress, discover_skills, parse_source,
     CloneProgress, DiscoverOptions,
 };
 use crate::error::AppError;
@@ -22,6 +23,15 @@ use serde::Serialize;
 use specta::Type;
 use std::collections::HashMap;
 use std::time::Instant;
+
+/// 更新进度事件（发送到前端）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UpdateProgress {
+    skill_name: String,
+    /// "cloning" | "installing" | "writing_lock"
+    phase: String,
+}
 
 /// 更新检测结果
 #[derive(Debug, Clone, Serialize, Type)]
@@ -251,6 +261,10 @@ async fn update_skill_single(
     let parsed = parse_source(&install_url)?;
 
     // 4. 克隆仓库
+    let _ = app.emit("update-progress", &UpdateProgress {
+        skill_name: skill_name.to_string(),
+        phase: "cloning".to_string(),
+    });
     let app_clone = app.clone();
     let clone_result = clone_repo_with_progress(
         &parsed.url,
@@ -273,45 +287,55 @@ async fn update_skill_single(
         .find(|s| s.name == skill_name)
         .ok_or_else(|| AppError::NoSkillsFound)?;
 
-    // 7. 检测已安装的 agents + universal agents
-    let mut target_agents = AgentType::detect_installed();
-    let universal_agents = AgentType::get_universal_agents();
-    for ua in universal_agents {
-        if !target_agents.contains(&ua) {
-            target_agents.push(ua);
-        }
-    }
-
-    // 8. 执行安装（覆盖现有文件）
+    // 7. 检测已安装的 agents（通过文件系统检测，fallback 到 detect_installed + universal）
     let install_scope = match scope {
         Scope::Global => crate::models::Scope::Global,
         Scope::Project => crate::models::Scope::Project,
     };
-    let mut agent_results = Vec::new();
-
-    for agent in &target_agents {
-        let agent_started = Instant::now();
-        let result = install_skill_for_agent(
-            &skill.path,
-            &skill.name,
-            agent,
-            &install_scope,
-            project_path,
-            &InstallMode::Symlink,
-        );
-        agent_results.push(UpdateSkillAgentResult {
-            agent: agent.to_string(),
-            status: if result.success {
-                UpdateSkillAgentStatus::Success
-            } else {
-                UpdateSkillAgentStatus::Failed
-            },
-            error: result.error.clone(),
-            duration_ms: Some(elapsed_ms(&agent_started)),
-        });
+    let mut target_agents = detect_installed_agents_for_skill(
+        skill_name, &install_scope, project_path,
+    );
+    if target_agents.is_empty() {
+        target_agents = AgentType::detect_installed();
+        let universal_agents = AgentType::get_universal_agents();
+        for ua in universal_agents {
+            if !target_agents.contains(&ua) {
+                target_agents.push(ua);
+            }
+        }
     }
 
-    // 9. 更新 lock 文件（获取新的 hash）
+    // 8. 检测安装模式（通过文件系统检测）
+    let install_mode = if let Some(first_agent) = target_agents.first() {
+        detect_install_mode(skill_name, first_agent, &install_scope, project_path)
+    } else {
+        InstallMode::Symlink
+    };
+
+    // 9. 执行安装（覆盖现有文件）
+    let _ = app.emit("update-progress", &UpdateProgress {
+        skill_name: skill_name.to_string(),
+        phase: "installing".to_string(),
+    });
+    let per_agent_results = install_skill_to_agents(
+        &skill.path, &skill.name, &target_agents,
+        &install_scope, project_path, &install_mode,
+    );
+    let agent_results: Vec<UpdateSkillAgentResult> = per_agent_results
+        .into_iter()
+        .map(|r| UpdateSkillAgentResult {
+            agent: r.agent,
+            status: if r.success { UpdateSkillAgentStatus::Success } else { UpdateSkillAgentStatus::Failed },
+            error: r.error,
+            duration_ms: r.duration_ms,
+        })
+        .collect();
+
+    // 10. 更新 lock 文件（获取新的 hash）
+    let _ = app.emit("update-progress", &UpdateProgress {
+        skill_name: skill_name.to_string(),
+        phase: "writing_lock".to_string(),
+    });
     let new_hash = if entry_source_type == "github" {
         fetch_skill_folder_hash(
             &entry_source,

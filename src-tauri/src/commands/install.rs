@@ -9,12 +9,14 @@ use crate::core::local_lock::{add_skill_to_local_lock, compute_skill_folder_hash
 use crate::core::skill_lock::{add_skill_to_lock, save_selected_agents};
 use crate::core::{
     clone_repo_with_progress, discover_skills, fetch_skill_folder_hash, get_owner_repo,
-    install_skill_for_agent, parse_source, CloneProgress, DiscoverOptions,
+    install_skill_to_agents, parse_source, CloneProgress, DiscoverOptions,
 };
 use crate::error::AppError;
 use crate::models::{
-    AvailableSkill, FetchResult, InstallParams, InstallResults, SourceType,
+    AvailableSkill, FetchResult, InstallMode, InstallParams, InstallResult, InstallResults,
+    SourceType,
 };
+use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
 /// 安装进度事件（发送到前端）
@@ -203,7 +205,14 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
         }
     }
 
-    // 6. 执行安装
+    // 6. 解析 target agents
+    let target_agent_types: Vec<AgentType> = target_agents
+        .iter()
+        .map(|s| s.parse::<AgentType>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| AppError::InvalidAgent { agent: "parse failed".to_string() })?;
+
+    // 7. 执行安装
     let mut successful = Vec::new();
     let mut failed = Vec::new();
     let mut symlink_fallback_agents = Vec::new();
@@ -218,32 +227,39 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
             total: total_skills,
         });
 
-        for agent_str in &target_agents {
-            let agent: AgentType = agent_str
-                .parse()
-                .map_err(|_| AppError::InvalidAgent { agent: agent_str.clone() })?;
+        let per_agent_results = install_skill_to_agents(
+            &skill.path,
+            &skill.name,
+            &target_agent_types,
+            &params.scope,
+            params.project_path.as_deref(),
+            &params.mode,
+        );
 
-            let result = install_skill_for_agent(
-                &skill.path,
-                &skill.name,
-                &agent,
-                &params.scope,
-                params.project_path.as_deref(),
-                &params.mode,
-            );
+        for par in per_agent_results {
+            let install_result = InstallResult {
+                skill_name: skill.name.clone(),
+                agent: par.agent.clone(),
+                success: par.success,
+                path: par.path,
+                canonical_path: par.canonical_path,
+                mode: par.mode,
+                symlink_failed: par.symlink_failed,
+                error: par.error,
+            };
 
-            if result.success {
-                if result.symlink_failed && !symlink_fallback_agents.contains(agent_str) {
-                    symlink_fallback_agents.push(agent_str.clone());
+            if install_result.success {
+                if install_result.symlink_failed && !symlink_fallback_agents.contains(&par.agent) {
+                    symlink_fallback_agents.push(par.agent.clone());
                 }
-                successful.push(result);
+                successful.push(install_result);
             } else {
-                failed.push(result);
+                failed.push(install_result);
             }
         }
     }
 
-    // 7. 写入 lock 文件
+    // 8. 写入 lock 文件
     if !successful.is_empty() {
         let _ = app.emit("install-progress", &InstallProgress {
             phase: "writing_lock".to_string(),
@@ -315,7 +331,7 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
         }
     }
 
-    // 8. 保存选择的 agents
+    // 9. 保存选择的 agents
     if behavior.persist_selected_agents {
         let _ = save_selected_agents(&target_agents);
     }
