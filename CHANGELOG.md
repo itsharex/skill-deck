@@ -13,12 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Updater Store 重写** — 新增并发保护（仅 idle/error 可触发检查）、下载中止（dismiss 设置 abortFlag）、错误退避（失败后 4h 重试 vs 正常 24h 间隔）、Release Notes 和 lastCheckTime 字段
 - **Settings 更新状态完善** — 覆盖全部 7 种状态（idle/checking/available/downloading/ready/error/idle+lastCheckTime），idle 状态展示相对时间「上次检查：5 分钟前」
 - 移除自动下载行为，改为用户在 Dialog 中确认后再开始下载
+- **update_skill 结构化响应** — `update_skill` 命令返回 `UpdateSkillResponse`（含 per-skill 状态 success/partial/failed/skipped、per-agent 结果、warnings、耗时），前端根据状态展示差异化 toast（成功/部分成功/跳过/失败 + 告警）
+- **Lock 文件原子写入** — `skill_lock` 和 `local_lock` 的写入改用 `tempfile::persist` 原子操作，避免写入中断导致文件损坏；统一追加尾部换行符
+- **Uninstaller 简化** — 提取 `resolve_agents_to_remove` 辅助函数，移除冗余的 `detect_installed` 中间回退逻辑
+- **CompleteStep 重构** — 统一为 skill 分组卡片展示，显示 agent 覆盖率统计（如 2/3 agents），失败明细可折叠展开
+- **安装重试行为分离** — 提取 `InstallBehavior` 结构体，重试模式下跳过 Universal Agent 自动填充和 agent 持久化
 
 ### Added
 
 - **UpdateDialog 组件** — 三态更新弹窗（available/downloading/ready），react-markdown 懒加载渲染 Release Notes，下载中禁止关闭
 - **formatRelativeTime 工具函数** — 将时间戳转换为 i18n 相对时间 key（刚刚/N 分钟前/N 小时前/昨天/N 天前），含 5 个单元测试
 - **Updater Store 测试** — 16 个单元测试覆盖并发保护、状态转换、错误退避、dismiss 重置
+- **逐 Skill 重试** — CompleteStep 新增「重试该 Skill」按钮，仅对失败的 skill + 失败的 agents 重新安装（通过 `retrySkillName`/`retryAgents` 状态传递）；后端 `InstallParams` 新增 `retry` 标志
+- **UpdateSkillResponse 类型体系** — 新增 `models/update.rs`：`UpdateSkillResponse`、`UpdateSkillItemResult`、`UpdateSkillAgentResult`、`UpdateSkillSummary`、`UpdateSkillStatus`、`UpdateSkillAgentStatus`
+- **11 个新增测试** — 6 个 Rust 测试（derive_skill_status 边界、summarize_results、InstallBehavior、serde 序列化）+ 2 个 CompleteStep 组件测试 + 2 个 useTauriApi 测试 + 1 个 skills store 测试
 
 ### Removed
 
