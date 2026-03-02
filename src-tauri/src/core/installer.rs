@@ -15,6 +15,19 @@ use crate::models::{InstallMode, InstallResult, Scope};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Per-agent install result (shared between install and update flows)
+#[derive(Debug, Clone)]
+pub struct PerAgentInstallResult {
+    pub agent: String,
+    pub success: bool,
+    pub error: Option<String>,
+    pub duration_ms: Option<u32>,
+    pub symlink_failed: bool,
+    pub path: PathBuf,
+    pub canonical_path: Option<PathBuf>,
+    pub mode: InstallMode,
+}
+
 /// 复制时排除的文件（与 CLI 一致）
 const EXCLUDE_FILES: &[&str] = &["metadata.json"];
 
@@ -275,6 +288,48 @@ fn create_symlink(target: &Path, link: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Install a single skill to multiple agents, returning per-agent results.
+///
+/// Shared core function used by both install and update commands.
+pub fn install_skill_to_agents(
+    skill_path: &Path,
+    skill_name: &str,
+    agents: &[AgentType],
+    scope: &Scope,
+    project_path: Option<&str>,
+    mode: &InstallMode,
+) -> Vec<PerAgentInstallResult> {
+    let mut results = Vec::with_capacity(agents.len());
+
+    for agent in agents {
+        let started = std::time::Instant::now();
+        let result = install_skill_for_agent(
+            skill_path,
+            skill_name,
+            agent,
+            scope,
+            project_path,
+            mode,
+        );
+
+        let elapsed = started.elapsed().as_millis();
+        let duration_ms = if elapsed > u32::MAX as u128 { u32::MAX } else { elapsed as u32 };
+
+        results.push(PerAgentInstallResult {
+            agent: agent.to_string(),
+            success: result.success,
+            error: result.error,
+            duration_ms: Some(duration_ms),
+            symlink_failed: result.symlink_failed,
+            path: result.path,
+            canonical_path: result.canonical_path,
+            mode: result.mode,
+        });
+    }
+
+    results
+}
+
 /// 检查 skill 是否已安装在指定 agent
 pub fn is_skill_installed(
     skill_name: &str,
@@ -301,6 +356,91 @@ pub fn is_skill_installed(
 
     let skill_dir = agent_base.join(&sanitized_name);
     skill_dir.exists()
+}
+
+/// Detect which agents actually have a skill installed by scanning the file system.
+///
+/// Used by the update command to determine which agents to update,
+/// instead of maintaining metadata in lock files.
+pub fn detect_installed_agents_for_skill(
+    skill_name: &str,
+    scope: &Scope,
+    project_path: Option<&str>,
+) -> Vec<AgentType> {
+    let is_global = matches!(scope, Scope::Global);
+    let cwd = project_path.unwrap_or(".");
+    let sanitized_name = sanitize_name(skill_name);
+
+    // Always scan all agent types — checking ~40 paths via symlink_metadata() is negligible,
+    // and this catches orphaned agent directories (e.g., user uninstalled Cursor but .cursor/rules still exists).
+    let candidates = AgentType::all();
+
+    let mut installed = Vec::new();
+    for agent in candidates {
+        let config = agent.config();
+
+        let skill_path = if is_global {
+            match &config.global_skills_dir {
+                Some(global_dir) => global_dir.join(&sanitized_name),
+                None => continue,
+            }
+        } else {
+            PathBuf::from(cwd)
+                .join(&config.skills_dir)
+                .join(&sanitized_name)
+        };
+
+        // Use symlink_metadata to detect even broken symlinks
+        if skill_path.symlink_metadata().is_ok() {
+            installed.push(agent);
+        }
+    }
+
+    installed
+}
+
+/// Detect whether a skill was installed via symlink/junction or copy
+/// by examining the actual file system state.
+pub fn detect_install_mode(
+    skill_name: &str,
+    agent: &AgentType,
+    scope: &Scope,
+    project_path: Option<&str>,
+) -> InstallMode {
+    let is_global = matches!(scope, Scope::Global);
+    let cwd = project_path.unwrap_or(".");
+    let sanitized_name = sanitize_name(skill_name);
+    let config = agent.config();
+
+    let skill_path = if is_global {
+        match &config.global_skills_dir {
+            Some(global_dir) => global_dir.join(&sanitized_name),
+            None => return InstallMode::Symlink, // default
+        }
+    } else {
+        PathBuf::from(cwd)
+            .join(&config.skills_dir)
+            .join(&sanitized_name)
+    };
+
+    let is_symlink = skill_path.symlink_metadata().map(|m| {
+        let symlink = m.file_type().is_symlink();
+
+        #[cfg(windows)]
+        let symlink = symlink || {
+            use std::os::windows::fs::MetadataExt;
+            // Junction = directory + reparse point (0x400)
+            m.file_type().is_dir() && m.file_attributes() & 0x400 != 0
+        };
+
+        symlink
+    }).unwrap_or(false);
+
+    if is_symlink {
+        InstallMode::Symlink
+    } else {
+        InstallMode::Copy
+    }
 }
 
 #[cfg(test)]
@@ -381,5 +521,33 @@ mod tests {
         clean_and_create_directory(&dir).unwrap();
         assert!(dir.exists());
         assert!(!dir.join("file.txt").exists());
+    }
+
+    #[test]
+    fn test_install_skill_to_agents_returns_per_agent_results() {
+        let src = tempdir().unwrap();
+        fs::write(src.path().join("SKILL.md"), "# Test").unwrap();
+
+        // Empty agents list returns empty results
+        let agents = vec![];
+        let results = install_skill_to_agents(
+            src.path(),
+            "test-skill",
+            &agents,
+            &Scope::Global,
+            None,
+            &InstallMode::Copy,
+        );
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_detect_installed_agents_empty_for_nonexistent_skill() {
+        let results = detect_installed_agents_for_skill(
+            "nonexistent-skill-xyz-12345",
+            &Scope::Global,
+            None,
+        );
+        assert!(results.is_empty());
     }
 }
