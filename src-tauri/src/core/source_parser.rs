@@ -1,9 +1,11 @@
 //! 来源解析模块
 //!
-//! 支持 9 种来源格式：
+//! 支持 11 种来源格式：
 //! - GitHub shorthand: owner/repo
 //! - GitHub + 子路径: owner/repo/path
 //! - GitHub + @skill: owner/repo@skill-name
+//! - GitHub 前缀简写: github:owner/repo
+//! - GitLab 前缀简写: gitlab:owner/repo
 //! - GitHub URL: https://github.com/owner/repo
 //! - GitHub URL + 分支: https://github.com/owner/repo/tree/branch/path
 //! - GitLab URL: https://gitlab.com/group/repo
@@ -37,6 +39,16 @@ pub fn parse_source(input: &str) -> Result<ParsedSource, AppError> {
     let input = input.trim();
     // 解析别名
     let input = &resolve_alias(input);
+
+    // github: 前缀简写 → 复用 shorthand 解析
+    if let Some(rest) = input.strip_prefix("github:") {
+        return parse_source(rest);
+    }
+
+    // gitlab: 前缀简写 → 转换为 GitLab URL
+    if let Some(rest) = input.strip_prefix("gitlab:") {
+        return parse_source(&format!("https://gitlab.com/{}", rest));
+    }
 
     if input.is_empty() {
         return Err(AppError::InvalidSource {
@@ -422,5 +434,41 @@ mod tests {
         assert_eq!(result.source_type, SourceType::GitHub);
         // URL 应包含 resolved 后的 repo 名
         assert!(result.url.contains("agentic-wallet-skills"));
+    }
+
+    #[test]
+    fn test_parse_github_prefix_basic() {
+        let result = parse_source("github:owner/repo").unwrap();
+        assert_eq!(result.source_type, SourceType::GitHub);
+        assert_eq!(result.url, "https://github.com/owner/repo");
+    }
+
+    #[test]
+    fn test_parse_github_prefix_with_subpath() {
+        let result = parse_source("github:owner/repo/skills/my-skill").unwrap();
+        assert_eq!(result.source_type, SourceType::GitHub);
+        assert_eq!(result.url, "https://github.com/owner/repo");
+        assert_eq!(result.subpath, Some("skills/my-skill".to_string()));
+    }
+
+    #[test]
+    fn test_parse_github_prefix_with_skill_filter() {
+        let result = parse_source("github:owner/repo@my-skill").unwrap();
+        assert_eq!(result.source_type, SourceType::GitHub);
+        assert_eq!(result.skill_filter, Some("my-skill".to_string()));
+    }
+
+    #[test]
+    fn test_parse_gitlab_prefix_basic() {
+        let result = parse_source("gitlab:owner/repo").unwrap();
+        assert_eq!(result.source_type, SourceType::GitLab);
+        assert_eq!(result.url, "https://gitlab.com/owner/repo");
+    }
+
+    #[test]
+    fn test_parse_gitlab_prefix_with_subgroups() {
+        let result = parse_source("gitlab:group/subgroup/repo").unwrap();
+        assert_eq!(result.source_type, SourceType::GitLab);
+        assert!(result.url.contains("gitlab.com/group/subgroup/repo"));
     }
 }
