@@ -12,9 +12,11 @@ pub mod plugin_manifest;
 pub mod skill_lock;
 pub mod source_parser;
 pub mod uninstaller;
+pub mod wellknown;
 
 pub use discovery::*;
 pub use git::*;
 pub use github_api::*;
 pub use installer::*;
 pub use source_parser::*;
+pub use wellknown::*;
