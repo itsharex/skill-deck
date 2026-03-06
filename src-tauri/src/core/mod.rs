@@ -19,4 +19,3 @@ pub use git::*;
 pub use github_api::*;
 pub use installer::*;
 pub use source_parser::*;
-pub use wellknown::*;

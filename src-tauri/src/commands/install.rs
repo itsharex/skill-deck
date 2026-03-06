@@ -14,10 +14,8 @@ use crate::core::{
 };
 use crate::error::AppError;
 use crate::models::{
-    AvailableSkill, FetchResult, InstallMode, InstallParams, InstallResult, InstallResults,
-    SourceType,
+    AvailableSkill, FetchResult, InstallParams, InstallResult, InstallResults, SourceType,
 };
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
 /// 安装进度事件（发送到前端）
