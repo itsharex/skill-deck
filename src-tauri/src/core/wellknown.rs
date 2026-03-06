@@ -3,6 +3,7 @@
 //! Implements discovery of skills hosted under the `.well-known/skills/` path
 //! on websites. This is the Rust equivalent of the CLI's `providers/wellknown.ts`.
 
+use crate::error::AppError;
 use serde::Deserialize;
 use std::path::PathBuf;
 use url::Url;
@@ -14,12 +15,12 @@ const INDEX_FILE: &str = "index.json";
 // Data structures
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct WellKnownIndex {
     pub skills: Vec<WellKnownSkillEntry>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct WellKnownSkillEntry {
     pub name: String,
     pub description: String,
@@ -28,7 +29,7 @@ pub struct WellKnownSkillEntry {
 
 /// Result of a successful well-known skill fetch — carries the local path
 /// where files were downloaded and an identifier suitable for lock-file storage.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WellKnownFetchResult {
     pub repo_path: PathBuf,
     pub source_identifier: String,
@@ -73,7 +74,7 @@ fn build_index_urls(url: &str) -> Vec<IndexUrlCandidate> {
         base_url: format!("{origin}/{WELL_KNOWN_PATH}"),
     };
 
-    if path.is_empty() || path == "/" {
+    if path.is_empty() {
         return vec![root_candidate];
     }
 
@@ -86,12 +87,16 @@ fn build_index_urls(url: &str) -> Vec<IndexUrlCandidate> {
 }
 
 /// Validate a single skill entry from the index.
-fn validate_skill_entry(entry: &WellKnownSkillEntry) -> Result<(), String> {
+fn validate_skill_entry(entry: &WellKnownSkillEntry) -> Result<(), AppError> {
     if entry.name.trim().is_empty() {
-        return Err("Skill name must not be empty".into());
+        return Err(AppError::InvalidSource {
+            value: "Skill name must not be empty".into(),
+        });
     }
     if entry.description.trim().is_empty() {
-        return Err("Skill description must not be empty".into());
+        return Err(AppError::InvalidSource {
+            value: "Skill description must not be empty".into(),
+        });
     }
 
     let has_skill_md = entry
@@ -99,18 +104,30 @@ fn validate_skill_entry(entry: &WellKnownSkillEntry) -> Result<(), String> {
         .iter()
         .any(|f| f.eq_ignore_ascii_case("SKILL.md"));
     if !has_skill_md {
-        return Err(format!(
-            "Skill '{}' must include SKILL.md in its files list",
-            entry.name
-        ));
+        return Err(AppError::InvalidSource {
+            value: format!(
+                "Skill '{}' must include SKILL.md in its files list",
+                entry.name
+            ),
+        });
     }
 
     for file in &entry.files {
-        if file.starts_with('/') || file.starts_with('\\') {
-            return Err(format!("Absolute path not allowed: {file}"));
+        if file.trim().is_empty() {
+            return Err(AppError::InvalidSource {
+                value: "Empty filename not allowed".into(),
+            });
         }
-        if file.contains("..") {
-            return Err(format!("Path traversal not allowed: {file}"));
+        if file.starts_with('/') || file.starts_with('\\') {
+            return Err(AppError::InvalidSource {
+                value: format!("Absolute path not allowed: {file}"),
+            });
+        }
+        let normalized = file.replace('\\', "/");
+        if normalized.split('/').any(|seg| seg == "..") {
+            return Err(AppError::InvalidSource {
+                value: format!("Path traversal not allowed: {file}"),
+            });
         }
     }
 
@@ -176,7 +193,17 @@ mod tests {
             files: vec!["SKILL.md".into(), "../etc/passwd".into()],
         };
         let err = validate_skill_entry(&entry).unwrap_err();
-        assert!(err.contains("Path traversal"));
+        assert!(err.to_string().contains("Path traversal"));
+    }
+
+    #[test]
+    fn test_validate_entry_path_traversal_no_false_positive() {
+        let entry = WellKnownSkillEntry {
+            name: "ok".into(),
+            description: "Has double-dot in filename".into(),
+            files: vec!["SKILL.md".into(), "my..file.txt".into()],
+        };
+        assert!(validate_skill_entry(&entry).is_ok());
     }
 
     #[test]
@@ -187,7 +214,40 @@ mod tests {
             files: vec!["SKILL.md".into(), "/etc/passwd".into()],
         };
         let err = validate_skill_entry(&entry).unwrap_err();
-        assert!(err.contains("Absolute path"));
+        assert!(err.to_string().contains("Absolute path"));
+    }
+
+    #[test]
+    fn test_validate_entry_empty_name() {
+        let entry = WellKnownSkillEntry {
+            name: "  ".into(),
+            description: "Has description".into(),
+            files: vec!["SKILL.md".into()],
+        };
+        let err = validate_skill_entry(&entry).unwrap_err();
+        assert!(err.to_string().contains("name must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_entry_empty_description() {
+        let entry = WellKnownSkillEntry {
+            name: "some-skill".into(),
+            description: "".into(),
+            files: vec!["SKILL.md".into()],
+        };
+        let err = validate_skill_entry(&entry).unwrap_err();
+        assert!(err.to_string().contains("description must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_entry_empty_filename() {
+        let entry = WellKnownSkillEntry {
+            name: "bad".into(),
+            description: "Has empty filename".into(),
+            files: vec!["SKILL.md".into(), "  ".into()],
+        };
+        let err = validate_skill_entry(&entry).unwrap_err();
+        assert!(err.to_string().contains("Empty filename"));
     }
 
     #[test]
