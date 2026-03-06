@@ -16,6 +16,8 @@
 
 use crate::error::AppError;
 use crate::models::{ParsedSource, SourceType};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::path::Path;
 use url::Url;
 
@@ -299,6 +301,18 @@ pub fn get_owner_repo(parsed: &ParsedSource) -> Option<String> {
             }
             None
         }
+        SourceType::Git => {
+            // git@host:owner/repo.git → owner/repo
+            static SSH_RE: Lazy<Regex> =
+                Lazy::new(|| Regex::new(r"^git@[^:]+:(.+)$").unwrap());
+            if let Some(caps) = SSH_RE.captures(&parsed.url) {
+                let path = caps[1].trim_end_matches(".git");
+                if path.contains('/') {
+                    return Some(path.to_string());
+                }
+            }
+            None
+        }
         _ => None,
     }
 }
@@ -470,5 +484,48 @@ mod tests {
         let result = parse_source("gitlab:group/subgroup/repo").unwrap();
         assert_eq!(result.source_type, SourceType::GitLab);
         assert!(result.url.contains("gitlab.com/group/subgroup/repo"));
+    }
+
+    #[test]
+    fn test_get_owner_repo_ssh_github() {
+        let parsed = parse_source("git@github.com:owner/repo.git").unwrap();
+        assert_eq!(get_owner_repo(&parsed), Some("owner/repo".to_string()));
+    }
+
+    #[test]
+    fn test_get_owner_repo_ssh_gitlab() {
+        let parsed = parse_source("git@gitlab.com:owner/repo.git").unwrap();
+        assert_eq!(get_owner_repo(&parsed), Some("owner/repo".to_string()));
+    }
+
+    #[test]
+    fn test_get_owner_repo_ssh_subgroups() {
+        let parsed = parse_source("git@gitlab.com:group/subgroup/repo.git").unwrap();
+        assert_eq!(get_owner_repo(&parsed), Some("group/subgroup/repo".to_string()));
+    }
+
+    #[test]
+    fn test_get_owner_repo_ssh_no_git_suffix() {
+        let parsed = parse_source("git@github.com:owner/repo").unwrap();
+        assert_eq!(get_owner_repo(&parsed), Some("owner/repo".to_string()));
+    }
+
+    #[test]
+    fn test_get_owner_repo_ssh_custom_host() {
+        let parsed = parse_source("git@git.company.com:org/team/repo.git").unwrap();
+        assert_eq!(get_owner_repo(&parsed), Some("org/team/repo".to_string()));
+    }
+
+    #[test]
+    fn test_get_owner_repo_ssh_no_path_returns_none() {
+        let parsed = ParsedSource {
+            source_type: SourceType::Git,
+            url: "git@github.com:repo.git".to_string(),
+            subpath: None,
+            local_path: None,
+            git_ref: None,
+            skill_filter: None,
+        };
+        assert_eq!(get_owner_repo(&parsed), None);
     }
 }
