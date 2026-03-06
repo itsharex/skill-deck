@@ -52,6 +52,38 @@ impl From<DiscoveredSkill> for AvailableSkill {
     }
 }
 
+/// Lexically normalize a path by resolving `.` and `..` without filesystem access
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                if !components.is_empty() {
+                    components.pop();
+                }
+            }
+            std::path::Component::CurDir => {}
+            c => components.push(c),
+        }
+    }
+    components.iter().collect()
+}
+
+/// 校验 resolved subpath 不逃逸 base_path（第二层防护）
+/// 与 CLI isSubpathSafe() 行为一致
+pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
+    let base = match base_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => base_path.to_path_buf(),
+    };
+    let target = base.join(subpath);
+    let resolved = match target.canonicalize() {
+        Ok(p) => p,
+        Err(_) => lexical_normalize(&target),
+    };
+    resolved.starts_with(&base)
+}
+
 /// 发现目录中的所有 skills
 ///
 /// # Arguments
@@ -73,6 +105,18 @@ pub fn discover_skills(
         Some(sub) => base_path.join(sub),
         None => base_path.to_path_buf(),
     };
+
+    // 校验 subpath 不逃逸 base_path（防止路径遍历）
+    if let Some(sub) = subpath {
+        if !is_subpath_safe(base_path, sub) {
+            return Err(AppError::InvalidSource {
+                value: format!(
+                    "Invalid subpath: \"{}\" resolves outside the repository directory",
+                    sub
+                ),
+            });
+        }
+    }
 
     if !search_path.exists() {
         return Err(AppError::PathNotFound {
@@ -415,6 +459,35 @@ mod tests {
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "direct-skill");
+    }
+
+    #[test]
+    fn test_is_subpath_safe_within_base() {
+        let temp = tempdir().unwrap();
+        assert!(is_subpath_safe(temp.path(), "skills"));
+        assert!(is_subpath_safe(temp.path(), "a/b/c"));
+    }
+
+    #[test]
+    fn test_is_subpath_safe_escape() {
+        let temp = tempdir().unwrap();
+        assert!(!is_subpath_safe(temp.path(), ".."));
+        assert!(!is_subpath_safe(temp.path(), "../etc"));
+        assert!(!is_subpath_safe(temp.path(), "../../etc/passwd"));
+    }
+
+    #[test]
+    fn test_is_subpath_safe_edge_base_itself() {
+        let temp = tempdir().unwrap();
+        assert!(is_subpath_safe(temp.path(), "."));
+    }
+
+    #[test]
+    fn test_discover_skills_rejects_unsafe_subpath() {
+        let temp = tempdir().unwrap();
+        let options = DiscoverOptions::default();
+        let result = discover_skills(temp.path(), Some("../../"), options);
+        assert!(result.is_err());
     }
 
     #[test]

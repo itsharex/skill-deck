@@ -103,8 +103,32 @@ fn parse_local_path(input: &str) -> Result<ParsedSource, AppError> {
     Ok(ParsedSource::local(path.to_path_buf()))
 }
 
+/// 检查 URL 原始路径中是否包含 `..` 遍历段（在 URL 规范化之前）
+fn url_has_path_traversal(url_str: &str) -> bool {
+    if let Some(idx) = url_str.find("://") {
+        let after_scheme = &url_str[idx + 3..];
+        let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
+        let path = &after_scheme[path_start..];
+        for segment in path.split('/') {
+            if segment == ".." {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// 解析 URL
 fn parse_url(input: &str) -> Result<ParsedSource, AppError> {
+    if url_has_path_traversal(input) {
+        return Err(AppError::InvalidSource {
+            value: format!(
+                "Unsafe URL: \"{}\" contains path traversal segments",
+                input
+            ),
+        });
+    }
+
     let url = Url::parse(input).map_err(|e| AppError::InvalidSource {
         value: format!("Invalid URL: {}", e),
     })?;
@@ -165,7 +189,8 @@ fn parse_github_url(_input: &str, url: &Url) -> Result<ParsedSource, AppError> {
     if parts.len() > 3 && (parts[2] == "tree" || parts[2] == "blob") {
         result.git_ref = Some(parts[3].to_string());
         if parts.len() > 4 {
-            result.subpath = Some(parts[4..].join("/"));
+            let sub = parts[4..].join("/");
+            result.subpath = Some(sanitize_subpath(&sub)?);
         }
     }
 
@@ -199,7 +224,8 @@ fn parse_gitlab_url(input: &str, url: &Url) -> Result<ParsedSource, AppError> {
         if !parts.is_empty() {
             result.git_ref = Some(parts[0].to_string());
             if parts.len() > 1 {
-                result.subpath = Some(parts[1..].join("/"));
+                let sub = parts[1..].join("/");
+                result.subpath = Some(sanitize_subpath(&sub)?);
             }
         }
 
@@ -262,7 +288,8 @@ fn parse_github_shorthand(input: &str) -> Result<ParsedSource, AppError> {
 
     // 设置子路径（如果有）
     if parts.len() > 2 {
-        result.subpath = Some(parts[2..].join("/"));
+        let sub = parts[2..].join("/");
+        result.subpath = Some(sanitize_subpath(&sub)?);
     }
 
     // 设置 skill 过滤器
@@ -271,6 +298,23 @@ fn parse_github_shorthand(input: &str) -> Result<ParsedSource, AppError> {
     }
 
     Ok(result)
+}
+
+/// 校验 subpath 不含路径遍历攻击
+/// 与 CLI sanitizeSubpath() 行为一致
+pub fn sanitize_subpath(subpath: &str) -> Result<String, AppError> {
+    let normalized = subpath.replace('\\', "/");
+    for segment in normalized.split('/') {
+        if segment == ".." {
+            return Err(AppError::InvalidSource {
+                value: format!(
+                    "Unsafe subpath: \"{}\" contains path traversal segments",
+                    subpath
+                ),
+            });
+        }
+    }
+    Ok(subpath.to_string())
 }
 
 /// 获取规范化的 owner/repo 格式（用于 lock 文件）
@@ -514,6 +558,54 @@ mod tests {
     fn test_get_owner_repo_ssh_custom_host() {
         let parsed = parse_source("git@git.company.com:org/team/repo.git").unwrap();
         assert_eq!(get_owner_repo(&parsed), Some("org/team/repo".to_string()));
+    }
+
+    #[test]
+    fn test_sanitize_subpath_allows_normal() {
+        assert!(sanitize_subpath("skills/my-skill").is_ok());
+        assert!(sanitize_subpath("path/to/skill").is_ok());
+        assert!(sanitize_subpath("src").is_ok());
+    }
+
+    #[test]
+    fn test_sanitize_subpath_rejects_traversal() {
+        assert!(sanitize_subpath("../etc").is_err());
+        assert!(sanitize_subpath("../../etc/passwd").is_err());
+        assert!(sanitize_subpath("skills/../../etc").is_err());
+        assert!(sanitize_subpath("a/b/../../../etc").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_subpath_rejects_backslash_traversal() {
+        assert!(sanitize_subpath("..\\etc").is_err());
+        assert!(sanitize_subpath("..\\..\\secret").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_subpath_allows_non_traversal_dots() {
+        assert!(sanitize_subpath(".hidden").is_ok());
+        assert!(sanitize_subpath("file.txt").is_ok());
+        assert!(sanitize_subpath("path/to/.config").is_ok());
+        assert!(sanitize_subpath("..skill").is_ok());
+        assert!(sanitize_subpath("skill..").is_ok());
+    }
+
+    #[test]
+    fn test_parse_rejects_github_tree_traversal() {
+        let result = parse_source("https://github.com/owner/repo/tree/main/../../etc");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_rejects_gitlab_tree_traversal() {
+        let result = parse_source("https://gitlab.com/owner/repo/-/tree/main/../../etc");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_rejects_shorthand_traversal() {
+        let result = parse_source("owner/repo/../../etc");
+        assert!(result.is_err());
     }
 
     #[test]
