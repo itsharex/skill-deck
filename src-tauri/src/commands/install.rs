@@ -7,6 +7,7 @@
 use crate::core::agents::AgentType;
 use crate::core::local_lock::{add_skill_to_local_lock, compute_skill_folder_hash, LocalSkillLockEntry};
 use crate::core::skill_lock::{add_skill_to_lock, save_selected_agents};
+use crate::core::wellknown::fetch_wellknown_skills;
 use crate::core::{
     clone_repo_with_progress, discover_skills, fetch_skill_folder_hash, get_owner_repo,
     install_skill_to_agents, parse_source, CloneProgress, DiscoverOptions,
@@ -62,10 +63,10 @@ fn compute_install_behavior(retry: bool) -> InstallBehavior {
 #[tauri::command]
 #[specta::specta]
 pub async fn fetch_available(app: AppHandle, source: String) -> Result<FetchResult, AppError> {
-    fetch_available_inner(&app, &source)
+    fetch_available_inner(&app, &source).await
 }
 
-fn fetch_available_inner(app: &AppHandle, source: &str) -> Result<FetchResult, AppError> {
+async fn fetch_available_inner(app: &AppHandle, source: &str) -> Result<FetchResult, AppError> {
     // 1. 解析来源
     let parsed = parse_source(source)?;
 
@@ -93,13 +94,8 @@ fn fetch_available_inner(app: &AppHandle, source: &str) -> Result<FetchResult, A
             (repo_path, Some(clone_result))
         }
         SourceType::WellKnown => {
-            // 这些类型需要特殊处理，暂时返回空列表
-            return Ok(FetchResult {
-                source_type: parsed.source_type.to_string(),
-                source_url: parsed.url.clone(),
-                skill_filter: parsed.skill_filter.clone(),
-                skills: vec![],
-            });
+            let result = fetch_wellknown_skills(&parsed.url).await?;
+            return discover_and_build_result(&parsed, &result.repo_path);
         }
     };
 
@@ -161,7 +157,7 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
                 .ok_or_else(|| AppError::InvalidSource { value: "Missing local path".to_string() })?;
             (path.clone(), None)
         }
-        _ => {
+        SourceType::GitHub | SourceType::GitLab | SourceType::Git => {
             let app_clone = app.clone();
             let clone_result = clone_repo_with_progress(
                 &parsed.url,
@@ -172,6 +168,10 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
             )?;
             let repo_path = clone_result.repo_path.clone();
             (repo_path, Some(clone_result))
+        }
+        SourceType::WellKnown => {
+            let result = fetch_wellknown_skills(&parsed.url).await?;
+            (result.repo_path, None)
         }
     };
 
@@ -290,7 +290,12 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
                 String::new()
             };
 
-            let source = owner_repo.as_deref().unwrap_or(&params.source);
+            let source = if parsed.source_type == SourceType::WellKnown {
+                crate::core::wellknown::extract_hostname(&parsed.url)
+                    .unwrap_or_else(|| params.source.clone())
+            } else {
+                owner_repo.as_deref().unwrap_or(&params.source).to_string()
+            };
             let source_type_str = &parsed.source_type.to_string();
             let source_url = &parsed.url;
             let skill_path = Some(skill.relative_path.as_str());
@@ -299,7 +304,7 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
             match params.scope {
                 crate::models::Scope::Global => {
                     let _ = add_skill_to_lock(
-                        &skill.name, source, source_type_str, source_url,
+                        &skill.name, &source, source_type_str, source_url,
                         skill_path, &skill_folder_hash,
                         skill.plugin_name.as_deref(),
                     );
@@ -313,7 +318,7 @@ async fn install_skills_inner(app: &AppHandle, params: InstallParams) -> Result<
                             .unwrap_or_default();
 
                         let entry = LocalSkillLockEntry {
-                            source: source.to_string(),
+                            source: source.clone(),
                             source_type: source_type_str.to_string(),
                             computed_hash,
                             remote_hash: if skill_folder_hash.is_empty() {
