@@ -92,7 +92,7 @@ fn fetch_available_inner(app: &AppHandle, source: &str) -> Result<FetchResult, A
             let repo_path = clone_result.repo_path.clone();
             (repo_path, Some(clone_result))
         }
-        SourceType::DirectUrl | SourceType::WellKnown => {
+        SourceType::WellKnown => {
             // 这些类型需要特殊处理，暂时返回空列表
             return Ok(FetchResult {
                 source_type: parsed.source_type.to_string(),

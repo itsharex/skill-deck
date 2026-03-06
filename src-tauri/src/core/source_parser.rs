@@ -9,7 +9,6 @@
 //! - GitLab URL: https://gitlab.com/group/repo
 //! - GitLab URL + 分支: https://gitlab.com/group/repo/-/tree/branch/path
 //! - 本地路径: ./path, /abs/path, C:\path
-//! - Direct URL: https://example.com/SKILL.md
 //! - Well-known: https://example.com (fallback)
 //! - Git URL: git@github.com:owner/repo.git (fallback)
 
@@ -106,19 +105,6 @@ fn parse_url(input: &str) -> Result<ParsedSource, AppError> {
     // GitLab URL
     if host == "gitlab.com" || host.contains("gitlab") {
         return parse_gitlab_url(input, &url);
-    }
-
-    // Direct URL (ends with SKILL.md or skill.md)
-    let path = url.path().to_lowercase();
-    if path.ends_with("skill.md") {
-        return Ok(ParsedSource {
-            source_type: SourceType::DirectUrl,
-            url: input.to_string(),
-            subpath: None,
-            local_path: None,
-            git_ref: None,
-            skill_filter: None,
-        });
     }
 
     // Well-known fallback
@@ -367,9 +353,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_direct_url() {
+    fn test_parse_direct_url_becomes_wellknown() {
         let result = parse_source("https://example.com/docs/SKILL.md").unwrap();
-        assert_eq!(result.source_type, SourceType::DirectUrl);
+        assert_eq!(result.source_type, SourceType::WellKnown);
     }
 
     #[test]

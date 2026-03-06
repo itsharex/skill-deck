@@ -5,7 +5,7 @@ use specta::Type;
 use std::path::PathBuf;
 
 /// 来源类型枚举
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "lowercase")]
 #[specta(rename_all = "lowercase")]
 pub enum SourceType {
@@ -13,8 +13,28 @@ pub enum SourceType {
     GitLab,
     Git,
     Local,
-    DirectUrl,
     WellKnown,
+}
+
+impl<'de> Deserialize<'de> for SourceType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "github" => Ok(SourceType::GitHub),
+            "gitlab" => Ok(SourceType::GitLab),
+            "git" => Ok(SourceType::Git),
+            "local" => Ok(SourceType::Local),
+            "well-known" | "wellknown" => Ok(SourceType::WellKnown),
+            "direct-url" | "directurl" => Ok(SourceType::WellKnown),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["github", "gitlab", "git", "local", "well-known"],
+            )),
+        }
+    }
 }
 
 impl std::fmt::Display for SourceType {
@@ -24,7 +44,6 @@ impl std::fmt::Display for SourceType {
             SourceType::GitLab => write!(f, "gitlab"),
             SourceType::Git => write!(f, "git"),
             SourceType::Local => write!(f, "local"),
-            SourceType::DirectUrl => write!(f, "direct-url"),
             SourceType::WellKnown => write!(f, "well-known"),
         }
     }
@@ -90,5 +109,43 @@ impl ParsedSource {
     pub fn with_skill_filter(mut self, filter: String) -> Self {
         self.skill_filter = Some(filter);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_direct_url_as_wellknown() {
+        let json = r#""direct-url""#;
+        let st: SourceType = serde_json::from_str(json).unwrap();
+        assert_eq!(st, SourceType::WellKnown);
+    }
+
+    #[test]
+    fn test_deserialize_all_source_types() {
+        let cases = vec![
+            ("\"github\"", SourceType::GitHub),
+            ("\"gitlab\"", SourceType::GitLab),
+            ("\"git\"", SourceType::Git),
+            ("\"local\"", SourceType::Local),
+            ("\"well-known\"", SourceType::WellKnown),
+            ("\"wellknown\"", SourceType::WellKnown),
+            ("\"direct-url\"", SourceType::WellKnown),
+            ("\"directurl\"", SourceType::WellKnown),
+        ];
+        for (json, expected) in cases {
+            let st: SourceType = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("Failed to deserialize {}: {}", json, e));
+            assert_eq!(st, expected, "Mismatch for {}", json);
+        }
+    }
+
+    #[test]
+    fn test_deserialize_unknown_type_errors() {
+        let json = r#""foobar""#;
+        let result: Result<SourceType, _> = serde_json::from_str(json);
+        assert!(result.is_err());
     }
 }
