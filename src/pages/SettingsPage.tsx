@@ -15,6 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { formatRelativeTime } from '@/utils/relative-time';
 import { relaunchApp } from '@/stores/updater';
 import type { AgentInfo } from '@/bindings';
+import { COMPATIBLE_CLI_VERSION } from '@/constants';
 
 interface ProjectRowProps {
   path: string;
@@ -265,7 +266,7 @@ export function SettingsPage() {
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-hover cursor-pointer"
                       >
-                        <span>vercel-labs/skills</span>
+                        <span>vercel-labs/skills v{COMPATIBLE_CLI_VERSION}</span>
                         <ExternalLink className="h-3.5 w-3.5" />
                         <span className="sr-only">({t('skills.externalLink')})</span>
                       </a>
