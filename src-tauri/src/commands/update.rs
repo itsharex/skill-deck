@@ -103,9 +103,6 @@ async fn check_updates_inner(
     let mut skills_by_source: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
 
     for (name, entry) in &lock.skills {
-        if entry.source_type != "github" {
-            continue;
-        }
         if entry.skill_folder_hash.is_empty() {
             continue;
         }
