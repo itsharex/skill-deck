@@ -4,12 +4,16 @@
 //! on websites. This is the Rust equivalent of the CLI's `providers/wellknown.ts`.
 
 use crate::error::AppError;
+use reqwest::Client;
 use serde::Deserialize;
+use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 use url::Url;
 
 const WELL_KNOWN_PATH: &str = ".well-known/skills";
 const INDEX_FILE: &str = "index.json";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
 // Data structures
@@ -132,6 +136,119 @@ fn validate_skill_entry(entry: &WellKnownSkillEntry) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// HTTP fetch
+// ---------------------------------------------------------------------------
+
+/// Fetch the well-known skills index from a URL, then download every declared
+/// file into a temporary directory. Returns the temp path and a hostname-based
+/// source identifier for lock-file storage.
+pub async fn fetch_wellknown_skills(url: &str) -> Result<WellKnownFetchResult, AppError> {
+    let source_identifier = extract_hostname(url).unwrap_or_else(|| "unknown".to_string());
+
+    let client = Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| AppError::GitNetworkError {
+            message: e.to_string(),
+        })?;
+
+    let (index, base_url) = fetch_index(&client, url).await?;
+
+    let valid_entries: Vec<&WellKnownSkillEntry> = index
+        .skills
+        .iter()
+        .filter(|e| validate_skill_entry(e).is_ok())
+        .collect();
+
+    if valid_entries.is_empty() {
+        return Err(AppError::NoSkillsFound);
+    }
+
+    let temp_path = tempfile::TempDir::new()?.keep();
+
+    for entry in &valid_entries {
+        let skill_dir = temp_path.join(&entry.name);
+        fs::create_dir_all(&skill_dir)?;
+
+        let mut skill_ok = true;
+
+        for file_path in &entry.files {
+            let file_url = format!("{base_url}/{}/{file_path}", entry.name);
+
+            let response = match client.get(&file_url).send().await {
+                Ok(resp) if resp.status().is_success() => resp,
+                _ => {
+                    if file_path.eq_ignore_ascii_case("SKILL.md") {
+                        skill_ok = false;
+                        break;
+                    }
+                    continue;
+                }
+            };
+
+            let target_path = skill_dir.join(file_path);
+
+            if !target_path.starts_with(&skill_dir) {
+                continue;
+            }
+
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            let bytes = response.bytes().await.map_err(|e| AppError::GitNetworkError {
+                message: e.to_string(),
+            })?;
+            fs::write(&target_path, &bytes)?;
+        }
+
+        if !skill_ok {
+            let _ = fs::remove_dir_all(&skill_dir);
+        }
+    }
+
+    Ok(WellKnownFetchResult {
+        repo_path: temp_path,
+        source_identifier,
+    })
+}
+
+/// Try each candidate index URL in order; return the first that responds with
+/// a non-empty skills list, together with its `base_url` (which already
+/// includes `.well-known/skills`).
+async fn fetch_index(
+    client: &Client,
+    url: &str,
+) -> Result<(WellKnownIndex, String), AppError> {
+    let candidates = build_index_urls(url);
+    if candidates.is_empty() {
+        return Err(AppError::InvalidSource {
+            value: format!("Cannot build index URL from: {url}"),
+        });
+    }
+
+    for candidate in &candidates {
+        let resp = match client.get(&candidate.index_url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            _ => continue,
+        };
+
+        let index: WellKnownIndex = match resp.json().await {
+            Ok(idx) => idx,
+            Err(_) => continue,
+        };
+
+        if !index.skills.is_empty() {
+            return Ok((index, candidate.base_url.clone()));
+        }
+    }
+
+    Err(AppError::InvalidSource {
+        value: format!("No well-known skills index found at: {url}"),
+    })
 }
 
 // ---------------------------------------------------------------------------
