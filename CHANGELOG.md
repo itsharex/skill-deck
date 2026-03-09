@@ -5,6 +5,22 @@ All notable changes to Skill Deck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-03-09
+
+### Changed
+
+- **对齐 skills CLI v1.4.4** — 完成与 vercel-labs/skills CLI v1.4.2 → v1.4.4 的全量同步
+- **移除 `SourceType::DirectUrl`** — `direct-url` 类型统一为 `well-known`；自定义 serde `Deserialize` 实现确保旧 lock 文件中 `"direct-url"` 值可正确反序列化为 `WellKnown`
+- **更新检测范围扩展** — `check_updates` 不再限制 `sourceType == "github"`，改为检查 `skillFolderHash` 和 `skillPath` 字段是否存在，支持更多来源类型的更新检测
+
+### Added
+
+- **Well-Known Skills 支持** — 实现 RFC 8615 `/.well-known/skills/` 协议，支持从任意 HTTP 站点发现和安装 skills（如 `https://mintlify.com/docs`）；新增 `core/wellknown.rs` 模块处理 index.json 获取、文件下载和临时目录管理；`fetch_available` 和 `install_skills` 命令完整接入 WellKnown 来源；lock 文件使用 hostname 作为 source identifier（对齐 CLI WellKnownProvider）
+- **`github:`/`gitlab:` 前缀简写** — source 输入支持 `github:owner/repo` 和 `gitlab:owner/repo` 前缀格式，分别复用 GitHub shorthand 和 GitLab URL 解析逻辑（对齐 CLI v1.4.4）
+- **SSH URL owner/repo 提取** — `get_owner_repo()` 新增对 `git@host:owner/repo.git` 格式的解析，支持 GitHub、GitLab、自定义 host 和多级 subgroup 路径
+- **Subpath 路径遍历防护** — 双层防护：解析层 `sanitize_subpath()` 拒绝含 `..` 段的 subpath，执行层 `is_subpath_safe()` 验证 resolved path 不逃逸 base 目录
+- **27 个新增 Rust 测试** — 覆盖 serde 兼容层（3）、前缀简写（5）、SSH URL 解析（6）、路径遍历防护（11）、更新检测（1）、现有测试修改（1）
+
 ## [0.8.0] - 2026-03-02
 
 ### Changed
