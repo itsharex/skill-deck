@@ -14,7 +14,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Toggle } from '@/components/ui/toggle';
 import {
   Tooltip,
   TooltipContent,
@@ -60,7 +59,6 @@ interface SkillCardProps {
   onClick?: (skill: InstalledSkill) => void;
   onUpdate?: (skillName: string) => void;
   onDelete?: (skill: InstalledSkill) => void;
-  onToggleAgent?: (skillName: string, agentId: string) => void;
 }
 
 export const SkillCard = memo(function SkillCard({
@@ -73,7 +71,6 @@ export const SkillCard = memo(function SkillCard({
   onClick,
   onUpdate,
   onDelete,
-  onToggleAgent,
 }: SkillCardProps) {
   const { t, i18n } = useTranslation();
 
@@ -228,19 +225,13 @@ export const SkillCard = memo(function SkillCard({
           {/* Row 4: Agents */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
             {skill.agents.map((agentId) => (
-              <Toggle
+              <span
                 key={agentId}
-                pressed={true}
-                onPressedChange={() => onToggleAgent?.(skill.name, agentId)}
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 sm:px-2.5 text-xs gap-1 sm:gap-1.5"
-                aria-label={t('skills.agent.disable', { name: agentDisplayNames.get(agentId) ?? agentId })}
-                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 sm:gap-1.5 rounded-md border border-border/40 bg-accent px-2 sm:px-2.5 py-1.5 text-xs font-medium text-accent-foreground shadow-sm"
               >
                 <span className="flex h-1.5 w-1.5 rounded-full bg-success" />
                 {agentDisplayNames.get(agentId) ?? agentId}
-              </Toggle>
+              </span>
             ))}
           </div>
         </CardContent>

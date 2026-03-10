@@ -42,7 +42,11 @@ export function GlobalEmptyState({ onAdd }: GlobalEmptyStateProps) {
   );
 }
 
-export function ProjectEmptyState() {
+interface ProjectEmptyStateProps {
+  onAdd?: () => void;
+}
+
+export function ProjectEmptyState({ onAdd }: ProjectEmptyStateProps) {
   const { t } = useTranslation();
 
   return (
@@ -52,9 +56,15 @@ export function ProjectEmptyState() {
           <Package className="h-5 w-5 text-muted-foreground" />
         </div>
         <p className="text-sm font-medium text-foreground mb-1">{t('skills.empty')}</p>
-        <p className="text-xs text-muted-foreground max-w-[220px]">
+        <p className="text-xs text-muted-foreground max-w-[220px] mb-3">
           {t('skills.emptyHint')}
         </p>
+        {onAdd && (
+          <Button size="sm" variant="outline" className="gap-1.5 cursor-pointer" onClick={onAdd}>
+            <Package className="h-3.5 w-3.5" />
+            {t('skills.add')}
+          </Button>
+        )}
       </div>
     </div>
   );

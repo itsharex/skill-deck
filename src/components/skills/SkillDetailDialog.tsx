@@ -144,6 +144,9 @@ export const SkillDetailDialog = memo(function SkillDetailDialog() {
                 {skill.canonicalPath}
               </code>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground/60">
+              {t('skills.detail.pathHint')}
+            </p>
           </div>
 
           {/* Synced Agents */}
@@ -157,9 +160,9 @@ export const SkillDetailDialog = memo(function SkillDetailDialog() {
                   {skill.agents.map((agentId) => (
                     <span
                       key={agentId}
-                      className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs font-medium"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-foreground shadow-sm"
                     >
-                      <span className="h-2 w-2 rounded-full bg-success" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
                       {agentId}
                     </span>
                   ))}

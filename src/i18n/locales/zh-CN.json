@@ -12,9 +12,9 @@
     "settings": "设置"
   },
   "context": {
-    "title": "上下文",
+    "title": "工作区",
     "global": "全局",
-    "globalSubtitle": "所有项目共享",
+    "globalSubtitle": "跨项目共享的 Skills",
     "projects": "项目",
     "addProject": "添加项目",
     "manageInSettings": "在设置中管理",
@@ -39,8 +39,8 @@
       "addProject": "添加项目..."
     },
     "select": "选择",
-    "update": "个更新",
-    "updates": "个更新",
+    "update": "个可更新",
+    "updates": "个可更新",
     "updated": "更新于 {{time}}",
     "actions": {
       "update": "更新",
@@ -52,10 +52,10 @@
       "disable": "禁用 {{name}}"
     },
     "externalLink": "在新标签页中打开",
-    "globalSkills": "Global Skills",
-    "projectSkills": "Project Skills",
+    "globalSkills": "全局 Skills",
+    "projectSkills": "项目 Skills",
     "pluginGroup": {
-      "general": "通用"
+      "general": "未分组"
     },
     "project": {
       "select": "选择项目",
@@ -80,17 +80,18 @@
       "title": "Skill 详情",
       "description": "描述",
       "source": "来源",
-      "path": "路径",
+      "path": "源文件路径",
+      "pathHint": "通用目录中的源文件，非通用 Agent 通过链接或复制引用",
       "installed": "安装时间",
       "updated": "更新时间",
-      "syncedAgents": "已同步 Agents",
+      "syncedAgents": "已安装到",
       "noSource": "手动添加",
-      "noAgents": "未同步到任何 Agent"
+      "noAgents": "尚未安装到任何 Agent"
     },
     "deleteConfirm": {
       "title": "删除 Skill",
       "description": "选择要从哪些 Agent 中移除此 Skill",
-      "sharedDirSection": "共享目录",
+      "sharedDirSection": "通用目录",
       "deleteCanonical": "删除源文件和安装记录",
       "canonicalWarning": "删除后，所有 Agent 都将失去此 Skill",
       "independentSection": "独立安装",
@@ -144,7 +145,7 @@
     "defaultAgents": {
       "title": "默认安装目标",
       "description": "安装 Skill 时默认选中的 Agents",
-      "universalHint": "Skills 将同时安装到通用目录 (~/.agents/skills/)",
+      "universalHint": "Skill 源文件存储在通用目录 (~/.agents/skills/)，支持此目录的 Agent 自动可用",
       "empty": "未检测到 Agent",
       "emptyHint": "请安装 Claude Code、Cursor 或 Windsurf 等 AI Agent",
       "addMore": "添加更多 Agents",
@@ -152,7 +153,7 @@
       "noResults": "未找到 Agent",
       "cliShared": "此设置与 skills CLI 共享"
     },
-    "detected": "已检测",
+    "detected": "已安装",
     "projects": "项目",
     "projectsHint": "已保存的项目路径，方便快速查看项目级 Skills",
     "projectsEmpty": "暂无已添加的项目",
@@ -214,10 +215,10 @@
   "addSkill": {
     "title": "添加 Skill",
     "steps": {
-      "scope": "范围",
-      "source": "来源",
-      "skills": "选择",
-      "options": "选项",
+      "scope": "安装位置",
+      "source": "Skill 来源",
+      "skills": "选择 Skills",
+      "options": "安装选项",
       "confirm": "确认"
     },
     "source": {
@@ -256,20 +257,20 @@
     },
     "agents": {
       "title": "安装目标",
-      "detected": "已检测",
-      "detectedSection": "已检测",
-      "otherSection": "其他 Agents",
-      "otherAgentsTitle": "其他 Agents",
+      "detected": "已安装",
+      "detectedSection": "已安装",
+      "otherSection": "更多 Agents",
+      "otherAgentsTitle": "更多 Agents",
       "expand": "展开",
       "collapse": "收起",
       "noneSelected": "未选择"
     },
     "scope": {
-      "title": "安装范围",
+      "title": "安装位置",
       "project": "项目",
-      "projectHint": "安装到当前项目目录",
+      "projectHint": "仅在当前项目目录生效",
       "global": "全局",
-      "globalHint": "安装到用户目录（全局可用）"
+      "globalHint": "安装到全局目录，所有项目均可访问"
     },
     "scopeSelect": {
       "title": "安装位置",
@@ -290,7 +291,9 @@
       "universal": "通用",
       "directories": "安装目录",
       "symlink": "符号链接",
-      "copy": "复制"
+      "symlinkHint": "各 Agent 引用通用目录源文件",
+      "copy": "复制",
+      "copyHint": "源文件复制到各 Agent 目录"
     },
     "installing": {
       "title": "安装中...",

@@ -12,9 +12,9 @@
     "settings": "Settings"
   },
   "context": {
-    "title": "Context",
+    "title": "Projects",
     "global": "Global",
-    "globalSubtitle": "Shared across projects",
+    "globalSubtitle": "Available to all projects",
     "projects": "Projects",
     "addProject": "Add Project",
     "manageInSettings": "Manage in Settings",
@@ -39,8 +39,8 @@
       "addProject": "Add Project..."
     },
     "select": "Select",
-    "update": "update",
-    "updates": "updates",
+    "update": "update available",
+    "updates": "updates available",
     "updated": "Updated {{time}}",
     "actions": {
       "update": "Update",
@@ -55,7 +55,7 @@
     "globalSkills": "Global Skills",
     "projectSkills": "Project Skills",
     "pluginGroup": {
-      "general": "General"
+      "general": "Ungrouped"
     },
     "project": {
       "select": "Select Project",
@@ -80,17 +80,18 @@
       "title": "Skill Details",
       "description": "Description",
       "source": "Source",
-      "path": "Path",
+      "path": "Source Path",
+      "pathHint": "Source files in the universal directory. Non-universal agents reference via symlink or copy.",
       "installed": "Installed",
       "updated": "Updated",
-      "syncedAgents": "Synced Agents",
+      "syncedAgents": "Installed To",
       "noSource": "Manually added",
-      "noAgents": "Not synced to any agent"
+      "noAgents": "Not installed to any agent"
     },
     "deleteConfirm": {
       "title": "Delete Skill",
       "description": "Choose which agents to remove this skill from",
-      "sharedDirSection": "Shared directory",
+      "sharedDirSection": "Universal Directory",
       "deleteCanonical": "Delete source files and install records",
       "canonicalWarning": "All agents will lose access to this skill",
       "independentSection": "Independent installs",
@@ -144,7 +145,7 @@
     "defaultAgents": {
       "title": "Default Install Targets",
       "description": "Agents selected by default when installing skills",
-      "universalHint": "Skills will also be installed to the universal directory (~/.agents/skills/)",
+      "universalHint": "Skill source files are stored in the universal directory (~/.agents/skills/). Agents that support this directory will have automatic access.",
       "empty": "No agents detected",
       "emptyHint": "Install AI coding agents like Claude Code, Cursor, or Windsurf",
       "addMore": "Add more agents",
@@ -152,7 +153,7 @@
       "noResults": "No agents found",
       "cliShared": "This setting is shared with skills CLI"
     },
-    "detected": "Detected",
+    "detected": "Installed",
     "projects": "Projects",
     "projectsHint": "Saved project paths for quick access to project-level skills",
     "projectsEmpty": "No projects added",
@@ -214,10 +215,10 @@
   "addSkill": {
     "title": "Add Skill",
     "steps": {
-      "scope": "Scope",
+      "scope": "Location",
       "source": "Source",
       "skills": "Skills",
-      "options": "Options",
+      "options": "Install Options",
       "confirm": "Confirm"
     },
     "source": {
@@ -256,20 +257,20 @@
     },
     "agents": {
       "title": "Install Targets",
-      "detected": "Detected",
-      "detectedSection": "Detected",
-      "otherSection": "Other Agents",
-      "otherAgentsTitle": "Other Agents",
+      "detected": "Installed",
+      "detectedSection": "Installed",
+      "otherSection": "More Agents",
+      "otherAgentsTitle": "More Agents",
       "expand": "Expand",
       "collapse": "Collapse",
       "noneSelected": "None selected"
     },
     "scope": {
-      "title": "Scope",
+      "title": "Install Location",
       "project": "Project",
       "projectHint": "Install in current project directory",
       "global": "Global",
-      "globalHint": "Install in home directory (available everywhere)"
+      "globalHint": "Install globally (available everywhere)"
     },
     "scopeSelect": {
       "title": "Install Location",
@@ -290,7 +291,9 @@
       "universal": "universal",
       "directories": "Install directories",
       "symlink": "Symlink",
-      "copy": "Copy"
+      "symlinkHint": "Agents reference source files in universal directory",
+      "copy": "Copy",
+      "copyHint": "Source files copied to each agent directory"
     },
     "installing": {
       "title": "Installing...",

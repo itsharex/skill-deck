@@ -194,6 +194,12 @@ export function ConfirmStep({ state, updateState, scope, projectPath }: ConfirmS
                   ? t('addSkill.confirm.symlink')
                   : t('addSkill.confirm.copy')}
               </span>
+              <span className="text-muted-foreground/50">—</span>
+              <span className="text-muted-foreground/60">
+                {state.mode === 'symlink'
+                  ? t('addSkill.confirm.symlinkHint')
+                  : t('addSkill.confirm.copyHint')}
+              </span>
             </div>
             <div className="border rounded-md divide-y divide-border/50">
               {selectedNonUniversalAgents.map((agent) => (

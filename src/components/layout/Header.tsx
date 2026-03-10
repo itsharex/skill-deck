@@ -97,8 +97,8 @@ export function Header() {
           size="icon"
           className="group h-10 w-10 rounded-full cursor-pointer"
           onClick={toggleTheme}
-          aria-label={t(`theme.${theme}`)}
-          title={t(`theme.${theme}`)}
+          aria-label={t(`theme.${theme === 'light' ? 'dark' : 'light'}`)}
+          title={t(`theme.${theme === 'light' ? 'dark' : 'light'}`)}
         >
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors group-hover:bg-muted-foreground/15 group-hover:text-foreground">
             {theme === 'light' ? (

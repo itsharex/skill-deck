@@ -119,12 +119,6 @@ export function SkillsPanel() {
     return conflicts;
   }, [globalSkills, projectSkills]);
 
-  // ⑤ Event handlers — 直接调用 store action，无需 useCallback 包装
-  // Agent Toggle 当前为只读展示，不支持操作
-  const handleToggleAgent = useCallback((_skillName: string, _agentId: string) => {
-    // no-op: agent toggle is display-only for now
-  }, []);
-
   const handleDeleteGlobal = useCallback((skill: InstalledSkill) => {
     openDelete(skill, 'global');
   }, [openDelete]);
@@ -150,7 +144,10 @@ export function SkillsPanel() {
   }, [forceCheckUpdates]);
 
   // 缓存 emptyState JSX (rerender-memo-with-default-value)
-  const projectEmptyState = useMemo(() => <ProjectEmptyState />, []);
+  const projectEmptyState = useMemo(
+    () => <ProjectEmptyState onAdd={handleAddProject} />,
+    [handleAddProject]
+  );
   const globalEmptyState = useMemo(
     () => <GlobalEmptyState onAdd={handleAddGlobal} />,
     [handleAddGlobal]
@@ -209,7 +206,6 @@ export function SkillsPanel() {
             onUpdateAll={updateAllInSection}
             onCancelUpdateAll={cancelUpdateAll}
             onDelete={handleDeleteProject}
-            onToggleAgent={handleToggleAgent}
             onAdd={handleAddProject}
             onCheckUpdates={handleCheckProjectUpdates}
             emptyState={projectEmptyState}
@@ -231,7 +227,6 @@ export function SkillsPanel() {
           onUpdateAll={updateAllInSection}
           onCancelUpdateAll={cancelUpdateAll}
           onDelete={handleDeleteGlobal}
-          onToggleAgent={handleToggleAgent}
           onAdd={handleAddGlobal}
           onCheckUpdates={handleCheckGlobalUpdates}
           emptyState={globalEmptyState}

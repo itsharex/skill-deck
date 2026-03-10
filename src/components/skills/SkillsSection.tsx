@@ -33,7 +33,6 @@ interface SkillsSectionProps {
   onUpdateAll: (scope: SkillScope) => Promise<void>;
   onCancelUpdateAll: () => void;
   onDelete: (skill: InstalledSkill) => void;
-  onToggleAgent: (skillName: string, agentId: string) => void;
   onAdd: () => void;
   onCheckUpdates?: () => void;
   emptyState?: React.ReactNode;
@@ -55,7 +54,6 @@ export const SkillsSection = memo(function SkillsSection({
   onUpdateAll,
   onCancelUpdateAll,
   onDelete,
-  onToggleAgent,
   onAdd,
   onCheckUpdates,
   emptyState,
@@ -173,7 +171,6 @@ export const SkillsSection = memo(function SkillsSection({
                     onClick={onSkillClick}
                     onUpdate={(name) => onUpdate(name, scope)}
                     onDelete={onDelete}
-                    onToggleAgent={onToggleAgent}
                   />
                 );
               })}
