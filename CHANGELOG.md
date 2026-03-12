@@ -5,6 +5,24 @@ All notable changes to Skill Deck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **批量更新检测优化** — `check_updates` 使用 `fetch_skill_folder_hashes_batch` 批量查询同源 skills 的 hash，同源 N 个 skills 从 N 次 GitHub Trees API 降为 1 次
+- **Update All 并行分组** — `updateAllInSection` 按 source 分组后调用 `updateSkillsBatch` 批量 API，不同源组并行执行（`Promise.all`），同组共享单次 clone
+- **SkillCard 进度条性能优化** — 更新进度 phase 改用 `useRef` + DOM 操作替代 `useState`，避免 Tauri 事件驱动的高频 re-render；条件渲染统一为三元表达式
+
+### Added
+
+- **`update_skills_batch` 命令** — 新增批量更新后端命令，按 source 分组后每组只 clone 一次仓库，从同一 clone 中安装所有同源 skills
+- **`fetch_skill_folder_hashes_batch` API** — 批量获取同源多个 skill 文件夹的 hash，单次 GitHub Trees API 请求即可比对所有 skills
+- **SkillCard 更新状态 Badge** — 新增 done/failed 独立 Badge 标识（`updateDone`/`updateFailed` i18n key），替代底部色条的单一信号
+
+### Fixed
+
+- **更新缓存标记残留** — 更新成功后清除 `updateInfoCache` 中对应 skill 的 `hasUpdate` 标记，防止 `syncSkills` 恢复旧标记导致更新按钮重新出现
+
 ## [0.9.0] - 2026-03-09
 
 ### Changed
@@ -188,7 +206,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 深色/浅色主题切换
 - GitHub Actions CI/CD 构建流水线（Windows / macOS / Ubuntu）
 
-[Unreleased]: https://github.com/hccake/skill-deck/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/hccake/skill-deck/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/hccake/skill-deck/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/hccake/skill-deck/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/hccake/skill-deck/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/hccake/skill-deck/compare/v0.5.0...v0.6.0
