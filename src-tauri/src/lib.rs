@@ -29,6 +29,7 @@ pub fn run() {
             commands::remove_details::get_skill_agent_details,
             commands::update::check_updates,
             commands::update::update_skill,
+            commands::update::update_skills_batch,
             commands::wizard::open_install_wizard,
             commands::audit::check_skill_audit,
         ])

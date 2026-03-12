@@ -232,6 +232,20 @@ async updateSkill(scope: Scope, name: string, projectPath: string | null) : Prom
 }
 },
 /**
+ * 批量更新多个 skills（同源 clone 合并）
+ * 
+ * 按 source 分组，每组只 clone 一次仓库，然后从同一 clone 中安装所有该组的 skills。
+ * 对于 N 个同源 skills，从 clone N 次降为 clone 1 次。
+ */
+async updateSkillsBatch(scope: Scope, names: string[], projectPath: string | null) : Promise<Result<UpdateSkillResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_skills_batch", { scope, names, projectPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 打开安装向导独立窗口
  * 
  * 必须为 async —— 同步 command 在主线程执行，

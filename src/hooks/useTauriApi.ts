@@ -202,6 +202,17 @@ export async function updateSkill(params: {
   return unwrap(await commands.updateSkill(params.scope, params.name, params.projectPath ?? null));
 }
 
+/**
+ * 批量更新多个 skills（同源 clone 合并）
+ */
+export async function updateSkillsBatch(params: {
+  scope: Scope;
+  names: string[];
+  projectPath?: string;
+}): Promise<UpdateSkillResponse> {
+  return unwrap(await commands.updateSkillsBatch(params.scope, params.names, params.projectPath ?? null));
+}
+
 // ============ 安全审计 API ============
 
 /**
