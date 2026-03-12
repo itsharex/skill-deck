@@ -1,7 +1,7 @@
 // src/components/skills/SkillsSection.tsx
-import { memo } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, AlertTriangle } from 'lucide-react';
+import { Plus, AlertTriangle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SkillCard } from './SkillCard';
 import type { AgentType, InstalledSkill, SkillAuditData, SkillScope } from '@/bindings';
@@ -78,6 +78,23 @@ export const SkillsSection = memo(function SkillsSection({
     }
   }
 
+  // 检测 isCheckingUpdates true → false 转换，短暂显示完成态
+  const [checkDone, setCheckDone] = useState(false);
+  const wasCheckingRef = useRef(false);
+  useEffect(() => {
+    if (isCheckingUpdates) {
+      wasCheckingRef.current = true;
+    } else if (wasCheckingRef.current) {
+      wasCheckingRef.current = false;
+      // 有更新时跳过 ✓ 反馈（已有 "X updates" 信号）
+      if (updatesCount === 0) {
+        setCheckDone(true);
+        const timer = setTimeout(() => setCheckDone(false), 800);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isCheckingUpdates, updatesCount]);
+
   return (
     <section className="mb-6">
       {/* Section Header */}
@@ -120,11 +137,17 @@ export const SkillsSection = memo(function SkillsSection({
           ) : null}
           {/* Check 按钮：不在 batch 更新中、有 skills 时始终显示 */}
           {!isAnyUpdating && onCheckUpdates && skills.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-xs text-muted-foreground cursor-pointer"
-              disabled={isCheckingUpdates}
-              onClick={onCheckUpdates}>
-              {t('skills.checkUpdates')}
-            </Button>
+            checkDone ? (
+              <span className="inline-flex items-center gap-1 h-5 px-1.5 text-xs text-success font-medium">
+                <Check className="h-3 w-3" />
+              </span>
+            ) : (
+              <Button variant="ghost" size="sm" className="h-5 px-1.5 text-xs text-muted-foreground cursor-pointer"
+                disabled={isCheckingUpdates}
+                onClick={onCheckUpdates}>
+                {t('skills.checkUpdates')}
+              </Button>
+            )
           )}
         </div>
         {/* 路径不存在时隐藏 Add 按钮 */}

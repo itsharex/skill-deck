@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **批量更新检测优化** — `check_updates` 使用 `fetch_skill_folder_hashes_batch` 批量查询同源 skills 的 hash，同源 N 个 skills 从 N 次 GitHub Trees API 降为 1 次
 - **Update All 并行分组** — `updateAllInSection` 按 source 分组后调用 `updateSkillsBatch` 批量 API，不同源组并行执行（`Promise.all`），同组共享单次 clone
 - **SkillCard 进度条性能优化** — 更新进度 phase 改用 `useRef` + DOM 操作替代 `useState`，避免 Tauri 事件驱动的高频 re-render；条件渲染统一为三元表达式
+- **刷新按钮交互优化** — Refresh 按钮增加最小 300ms spin 保持时间 + ✓ 完成态闪现（800ms），解决操作过快时用户无法感知点击生效的问题；Check 按钮检测完成后短暂显示 ✓ 图标（有更新时跳过，已有 "X updates" 信号）
 
 ### Added
 

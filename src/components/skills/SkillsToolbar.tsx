@@ -1,6 +1,7 @@
 // src/components/skills/SkillsToolbar.tsx
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,7 +25,7 @@ interface SkillsToolbarProps {
   /** 可筛选的 agent 列表 */
   filterableAgents: AgentInfo[];
   /** 同步按钮回调 */
-  onSync: () => void;
+  onSync: () => void | Promise<void>;
   /** 是否正在同步 */
   isSyncing?: boolean;
 }
@@ -39,6 +40,19 @@ export function SkillsToolbar({
   isSyncing = false,
 }: SkillsToolbarProps) {
   const { t } = useTranslation();
+
+  // local state: 最小 spin 时间 + ✓ 完成态闪现
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done'>('idle');
+  const isBusy = isSyncing || syncStatus !== 'idle';
+
+  const handleSync = useCallback(async () => {
+    if (isBusy) return;
+    setSyncStatus('syncing');
+    const minDelay = new Promise<void>((r) => setTimeout(r, 300));
+    await Promise.all([onSync(), minDelay]);
+    setSyncStatus('done');
+    setTimeout(() => setSyncStatus('idle'), 800);
+  }, [isBusy, onSync]);
 
   return (
     <div className="flex items-center gap-3 mb-4">
@@ -76,10 +90,13 @@ export function SkillsToolbar({
         variant="outline"
         size="sm"
         className="h-9 gap-2"
-        onClick={onSync}
-        disabled={isSyncing}
+        onClick={handleSync}
+        disabled={isBusy}
       >
-        <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+        {syncStatus === 'done'
+          ? <Check className="h-4 w-4 text-success" />
+          : <RefreshCw className={`h-4 w-4 ${isBusy ? 'animate-spin' : ''}`} />
+        }
         {t('skills.sync')}
       </Button>
     </div>
