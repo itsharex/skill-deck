@@ -10,6 +10,7 @@ import {
   getSkillAgentDetails as apiGetAgentDetails,
   checkUpdates,
   updateSkill as apiUpdateSkill,
+  updateSkillsBatch as apiUpdateSkillsBatch,
   openInstallWizard,
   checkSkillAudit,
 } from '@/hooks/useTauriApi';
@@ -32,6 +33,19 @@ function mergeUpdateInfo(skills: InstalledSkill[], updates: SkillUpdateInfo[]): 
 /** 更新检测结果的 scope 级缓存 — 避免频繁切换 scope 时重复网络请求 */
 const updateInfoCache = new Map<string, { results: SkillUpdateInfo[]; checkedAt: number }>();
 const UPDATE_CHECK_TTL = 5 * 60 * 1000; // 5 分钟
+
+/** 清除缓存中指定 skill 的 hasUpdate 标记 — 更新成功后调用，防止 syncSkills 恢复旧标记 */
+function clearUpdateCacheForSkill(skillName: string, scope: SkillScope) {
+  const cacheKey = scope === 'project'
+    ? useContextStore.getState().selectedContext
+    : 'global';
+  const cached = updateInfoCache.get(cacheKey);
+  if (cached) {
+    cached.results = cached.results.map((r) =>
+      r.name === skillName ? { ...r, hasUpdate: false } : r
+    );
+  }
+}
 
 /** i18n t() 的便捷包装 */
 function t(key: string, options?: Record<string, unknown>): string {
@@ -370,6 +384,9 @@ export const useSkillsStore = create<SkillsState>()((set, get) => ({
         toast.warning(t('skills.updateWarning', { name: skillName, count: item.warnings.length, detail: item.warnings[0] }));
       }
 
+      // Bug1 修复：清除缓存中的 hasUpdate 标记，防止 syncSkills 恢复旧标记
+      clearUpdateCacheForSkill(skillName, scope);
+
       set((state) => {
         const next = new Map(state.updatingSkills);
         next.set(skillName, 'done');
@@ -414,47 +431,76 @@ export const useSkillsStore = create<SkillsState>()((set, get) => ({
       return { updatingSkills: next };
     });
 
+    // 按 source 分组 — async-parallel 规则：不同 source 组并行
+    const bySource = new Map<string, typeof updatable>();
+    for (const skill of updatable) {
+      const key = skill.source ?? '__no_source__';
+      const group = bySource.get(key);
+      if (group) {
+        group.push(skill);
+      } else {
+        bySource.set(key, [skill]);
+      }
+    }
+
+    const { selectedContext } = useContextStore.getState();
+    const projectPath = scope === 'project' ? selectedContext : undefined;
     const results: { name: string; success: boolean }[] = [];
 
-    for (const skill of updatable) {
-      if (get().updateAllCancelled) {
-        set((state) => {
-          const next = new Map(state.updatingSkills);
-          for (const [name, status] of next) {
-            if (status === 'queued') next.delete(name);
-          }
-          return { updatingSkills: next };
-        });
-        break;
-      }
+    // 并行调用各 source 组的 updateSkillsBatch
+    const groupPromises = Array.from(bySource.entries()).map(async ([, group]) => {
+      if (get().updateAllCancelled) return;
 
+      // 标记该组全部为 updating
       set((state) => {
         const next = new Map(state.updatingSkills);
-        next.set(skill.name, 'updating');
+        for (const s of group) {
+          if (next.get(s.name) === 'queued') next.set(s.name, 'updating');
+        }
         return { updatingSkills: next };
       });
 
-      const { selectedContext } = useContextStore.getState();
-      const projectPath = scope === 'project' ? selectedContext : undefined;
-
       try {
-        const response = await apiUpdateSkill({ scope, name: skill.name, projectPath });
-        const item = response.results.find((r) => r.name === skill.name) ?? response.results[0];
-        const success = !item || item.status === 'success' || item.status === 'partial';
-        results.push({ name: skill.name, success });
-        set((state) => {
-          const next = new Map(state.updatingSkills);
-          next.set(skill.name, success ? 'done' : 'failed');
-          return { updatingSkills: next };
+        const response = await apiUpdateSkillsBatch({
+          scope,
+          names: group.map((s) => s.name),
+          projectPath,
         });
+
+        for (const skill of group) {
+          const item = response.results.find((r) => r.name === skill.name);
+          const success = !item || item.status === 'success' || item.status === 'partial';
+          results.push({ name: skill.name, success });
+          if (success) clearUpdateCacheForSkill(skill.name, scope);
+          set((state) => {
+            const next = new Map(state.updatingSkills);
+            next.set(skill.name, success ? 'done' : 'failed');
+            return { updatingSkills: next };
+          });
+        }
       } catch {
-        results.push({ name: skill.name, success: false });
-        set((state) => {
-          const next = new Map(state.updatingSkills);
-          next.set(skill.name, 'failed');
-          return { updatingSkills: next };
-        });
+        for (const skill of group) {
+          results.push({ name: skill.name, success: false });
+          set((state) => {
+            const next = new Map(state.updatingSkills);
+            next.set(skill.name, 'failed');
+            return { updatingSkills: next };
+          });
+        }
       }
+    });
+
+    await Promise.all(groupPromises);
+
+    // 取消时清理 queued 状态
+    if (get().updateAllCancelled) {
+      set((state) => {
+        const next = new Map(state.updatingSkills);
+        for (const [name, status] of next) {
+          if (status === 'queued') next.delete(name);
+        }
+        return { updatingSkills: next };
+      });
     }
 
     const succeeded = results.filter((r) => r.success).length;
