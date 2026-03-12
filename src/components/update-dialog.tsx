@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 // bundle-dynamic-imports: react-markdown ~40KB gzipped，仅在展示 release notes 时加载
 const Markdown = lazy(() => import('react-markdown'));
@@ -98,7 +99,7 @@ export function UpdateDialog({ open }: { open: boolean }) {
               {isMac ? (
                 <Button
                   className="cursor-pointer"
-                  onClick={() => window.open(RELEASE_URL, '_blank')}
+                  onClick={() => openUrl(RELEASE_URL)}
                 >
                   {t('settings.update.goToDownload')}
                 </Button>
