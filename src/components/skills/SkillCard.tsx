@@ -1,5 +1,5 @@
 // src/components/skills/SkillCard.tsx
-import { useState, useEffect, memo } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import { cn, formatTime, toTitleCase } from '@/lib/utils';
@@ -34,12 +34,12 @@ function phaseToPercent(phase: string | null): string {
   }
 }
 
-function phaseToLabel(phase: string | null, t: (key: string) => string): string {
+function phaseToI18nKey(phase: string | null): string {
   switch (phase) {
-    case 'cloning': return t('skills.updatePhaseCloning');
-    case 'installing': return t('skills.updatePhaseInstalling');
-    case 'writing_lock': return t('skills.updatePhaseWritingLock');
-    default: return t('skills.updatePhaseCloning');
+    case 'cloning': return 'skills.updatePhaseCloning';
+    case 'installing': return 'skills.updatePhaseInstalling';
+    case 'writing_lock': return 'skills.updatePhaseWritingLock';
+    default: return 'skills.updatePhaseCloning';
   }
 }
 
@@ -74,30 +74,31 @@ export const SkillCard = memo(function SkillCard({
 }: SkillCardProps) {
   const { t, i18n } = useTranslation();
 
-  const [updatePhase, setUpdatePhase] = useState<string | null>(null);
-  // React-recommended pattern: adjust state during render when a prop changes
-  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
-  const [prevUpdateStatus, setPrevUpdateStatus] = useState(updateStatus);
-  if (prevUpdateStatus !== updateStatus) {
-    setPrevUpdateStatus(updateStatus);
-    if (updatePhase !== null) {
-      setUpdatePhase(null);
-    }
-  }
+  // React1: useRef 替代 useState — rerender-use-ref-transient-values
+  // updatePhase 频繁更新（Tauri 事件驱动），使用 ref 避免不必要的 re-render
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const phaseBadgeRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (updateStatus !== 'updating') return;
 
     const unlisten = listen<{ skillName: string; phase: string }>('update-progress', (event) => {
       if (event.payload.skillName === skill.name) {
-        setUpdatePhase(event.payload.phase);
+        const phase = event.payload.phase;
+        // 直接操作 DOM — 不触发 React re-render
+        if (progressBarRef.current) {
+          progressBarRef.current.style.width = phaseToPercent(phase);
+        }
+        if (phaseBadgeRef.current) {
+          phaseBadgeRef.current.textContent = t(phaseToI18nKey(phase));
+        }
       }
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [updateStatus, skill.name]);
+  }, [updateStatus, skill.name, t]);
 
   const ScopeIcon = displayScope === 'global' ? Globe : Folder;
   const scopeTooltip = t(`skills.scopeIcon.${displayScope}`);
@@ -134,17 +135,17 @@ export const SkillCard = memo(function SkillCard({
               <h3 className="text-sm font-semibold text-foreground">{skill.name}</h3>
 
               {/* Risk Badge */}
-              {riskLevel && <RiskBadge risk={riskLevel} />}
+              {riskLevel ? <RiskBadge risk={riskLevel} /> : null}
 
               {/* Plugin Name Badge */}
-              {skill.pluginName && (
+              {skill.pluginName ? (
                 <Badge variant="secondary" className="text-xs px-1.5 py-0">
                   {toTitleCase(skill.pluginName)}
                 </Badge>
-              )}
+              ) : null}
 
               {/* Conflict Icon */}
-              {hasConflict && (
+              {hasConflict ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <AlertTriangle className="h-4 w-4 text-warning" />
@@ -153,32 +154,46 @@ export const SkillCard = memo(function SkillCard({
                     <p>{conflictTooltip}</p>
                   </TooltipContent>
                 </Tooltip>
-              )}
+              ) : null}
             </div>
 
-            {/* Action buttons */}
+            {/* Action buttons — React2: 三元条件渲染 (rendering-conditional-render) */}
             <div className="flex items-center gap-0.5 sm:gap-1">
-              {updateStatus === 'queued' && (
+              {updateStatus === 'queued' ? (
                 <Badge variant="outline" className="text-xs text-muted-foreground">
                   {t('skills.queued')}
                 </Badge>
-              )}
-              {(updateStatus === 'updating' || (skill.hasUpdate && !updateStatus)) && (
+              ) : null}
+              {updateStatus === 'updating' ? (
+                <Badge variant="outline" className="text-xs text-warning animate-pulse">
+                  <span ref={phaseBadgeRef}>{t('skills.updatePhaseCloning')}</span>
+                </Badge>
+              ) : null}
+              {updateStatus === 'done' ? (
+                <Badge variant="outline" className="text-xs text-success">
+                  {t('skills.updateDone')}
+                </Badge>
+              ) : null}
+              {updateStatus === 'failed' ? (
+                <Badge variant="outline" className="text-xs text-destructive">
+                  {t('skills.updateFailed')}
+                </Badge>
+              ) : null}
+              {skill.hasUpdate && !updateStatus ? (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-warning hover:text-warning hover:bg-warning/10 cursor-pointer"
                   aria-label={t('skills.actions.update')}
                   title={t('skills.actions.update')}
-                  disabled={!!updateStatus}
                   onClick={(e) => {
                     e.stopPropagation();
                     onUpdate?.(skill.name);
                   }}
                 >
-                  <ArrowUpCircle className={cn('h-3.5 w-3.5', updateStatus === 'updating' && 'animate-spin')} />
+                  <ArrowUpCircle className="h-3.5 w-3.5" />
                 </Button>
-              )}
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon"
@@ -202,7 +217,7 @@ export const SkillCard = memo(function SkillCard({
 
           {/* Row 3: Source + Updated */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-            {skill.sourceUrl && skill.source && (
+            {skill.sourceUrl && skill.source ? (
               <>
                 <a
                   href={skill.sourceUrl}
@@ -216,10 +231,10 @@ export const SkillCard = memo(function SkillCard({
                 </a>
                 <span className="text-border">·</span>
               </>
-            )}
-            {skill.updatedAt && (
+            ) : null}
+            {skill.updatedAt ? (
               <span>{t('skills.updated', { time: formatTime(skill.updatedAt, i18n.language) })}</span>
-            )}
+            ) : null}
           </div>
 
           {/* Row 4: Agents */}
@@ -235,22 +250,20 @@ export const SkillCard = memo(function SkillCard({
             ))}
           </div>
         </CardContent>
-        {updateStatus === 'updating' && (
+        {/* Bug2 修复：底部极细进度条，无文字标签 */}
+        {updateStatus === 'updating' ? (
           <div className="absolute bottom-0 left-0 right-0">
-            <div className="h-0.5 bg-warning/20 overflow-hidden">
-              <div className="h-full bg-warning transition-all duration-500" style={{ width: phaseToPercent(updatePhase) }} />
-            </div>
-            <div className="px-3 py-0.5 text-[10px] text-muted-foreground">
-              {phaseToLabel(updatePhase, t)}
+            <div className="h-0.5 bg-warning/20 overflow-hidden rounded-b-xl">
+              <div ref={progressBarRef} className="h-full bg-warning transition-all duration-500" style={{ width: '10%' }} />
             </div>
           </div>
-        )}
-        {updateStatus === 'done' && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-success transition-opacity duration-700" />
-        )}
-        {updateStatus === 'failed' && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-destructive" />
-        )}
+        ) : null}
+        {updateStatus === 'done' ? (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-success transition-opacity duration-700 rounded-b-xl" />
+        ) : null}
+        {updateStatus === 'failed' ? (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-destructive rounded-b-xl" />
+        ) : null}
       </Card>
   );
 });

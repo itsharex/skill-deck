@@ -121,6 +121,8 @@
     "updatePhaseCloning": "Fetching latest version...",
     "updatePhaseInstalling": "Installing to agents...",
     "updatePhaseWritingLock": "Saving configuration...",
+    "updateDone": "Updated",
+    "updateFailed": "Failed",
     "checkUpdates": "Check",
     "discover": {
       "searchPlaceholder": "Search skills...",
